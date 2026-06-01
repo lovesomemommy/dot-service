@@ -26,10 +26,6 @@ def _cross_z(o: Point, a: Point, b: Point) -> float:
 
 
 def ray_casting(point: Point, ring: Ring) -> PointLocation:
-    """
-    Из точки проводим горизонтальный луч вправо и считаем пересечения с рёбрами.
-    Нечётное число пересечений — внутри, чётное — снаружи.
-    """
     pts = ring.points
     n = len(pts)
     px, py = point.x, point.y
@@ -51,11 +47,6 @@ def ray_casting(point: Point, ring: Ring) -> PointLocation:
 
 
 def winding_number(point: Point, ring: Ring) -> PointLocation:
-    """
-    Считаем, сколько раз контур обматывается вокруг точки.
-    Если winding number не равен нулю — точка внутри.
-    Алгоритм устойчивее к самопересечениям, чем ray casting.
-    """
     pts = ring.points
     n = len(pts)
     px, py = point.x, point.y
@@ -104,11 +95,6 @@ def multipolygon_contains(
     multi: MultiPolygon,
     algorithm: str = "ray_casting",
 ) -> PointLocation:
-    """
-    Точка принадлежит MultiPolygon, если принадлежит хотя бы одной из его частей.
-    Граница имеет приоритет над «внутри»: если точка лежит на границе любой части,
-    возвращаем ON_BOUNDARY.
-    """
     found_inside = False
     for part in multi.polygons:
         loc = polygon_contains(point, part, algorithm)

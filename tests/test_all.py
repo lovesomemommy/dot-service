@@ -3,9 +3,6 @@ import os
 import json
 import unittest
 import io
-from http.client import HTTPResponse
-from unittest.mock import MagicMock
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from geometry.types import Point, Ring, Polygon, MultiPolygon, geometry_from_geojson
@@ -16,14 +13,11 @@ from geometry.algorithms import (
 from geometry.index import BoundingBoxIndex, GridIndex
 from geometry.wkt import parse_wkt, to_wkt
 from storage.repository import PolygonRepository
-
-
-
-# Фикстуры
+from api import server as api_server
+from api.server import PolygonServiceHandler, reset_repository
 
 
 def make_square(x0=0, y0=0, x1=1, y1=1) -> Polygon:
-    """Создать прямоугольник как полигон."""
     ring = Ring(points=[
         Point(x0, y0), Point(x1, y0),
         Point(x1, y1), Point(x0, y1)
@@ -42,8 +36,6 @@ def make_square_with_hole() -> Polygon:
     ])
     return Polygon(exterior=exterior, holes=[hole])
 
-
-#  Тесты типов
 
 class TestPointClass(unittest.TestCase):
 
@@ -67,19 +59,18 @@ class TestPointClass(unittest.TestCase):
 
     def test_invalid_coords(self):
         with self.assertRaises(ValueError):
-            Point.from_list([1.0])  # только одна координата
+            Point.from_list([1.0])
 
 
 class TestRingClass(unittest.TestCase):
 
     def test_create_from_coords(self):
         ring = Ring.from_coords([[0,0],[1,0],[1,1],[0,1],[0,0]])
-        # GeoJSON-замыкание убирается, должно быть 4 точки
         self.assertEqual(len(ring), 4)
 
     def test_too_few_points(self):
         with self.assertRaises(ValueError):
-            Ring.from_coords([[0,0],[1,0],[0,0]])  # только 2 уникальные точки
+            Ring.from_coords([[0,0],[1,0],[0,0]])
 
     def test_bounding_box(self):
         ring = Ring(points=[Point(1,2), Point(3,2), Point(3,5), Point(1,5)])
@@ -89,13 +80,12 @@ class TestRingClass(unittest.TestCase):
     def test_to_coords_closes_ring(self):
         ring = Ring(points=[Point(0,0), Point(1,0), Point(1,1)])
         coords = ring.to_coords()
-        self.assertEqual(coords[0], coords[-1])  # первая == последняя
+        self.assertEqual(coords[0], coords[-1])
 
 
 class TestPolygonClass(unittest.TestCase):
 
     def test_geojson_roundtrip(self):
-        """Полигон → GeoJSON → Полигон должен дать тот же результат."""
         original = make_square()
         geojson = original.to_geojson()
         restored = Polygon.from_geojson(geojson)
@@ -115,7 +105,6 @@ class TestPolygonClass(unittest.TestCase):
             Polygon.from_geojson({"type": "Point", "coordinates": [0, 0]})
 
     def test_feature_wrapper(self):
-        """GeoJSON Feature должен распознаваться и парситься."""
         feature = {
             "type": "Feature",
             "geometry": {
@@ -127,13 +116,7 @@ class TestPolygonClass(unittest.TestCase):
         self.assertEqual(len(poly.exterior), 4)
 
 
-#  Тесты алгоритмов
-
 class _AlgorithmMixin:
-    """
-    Базовый миксин для тестирования алгоритмов PIP.
-    Оба алгоритма (Ray Casting и Winding Number) должны давать одинаковые результаты.
-    """
 
     def _check(self, point: Point, ring: Ring) -> PointLocation:
         raise NotImplementedError
@@ -141,8 +124,6 @@ class _AlgorithmMixin:
     def setUp(self):
         self.square = make_square(0, 0, 4, 4)
         self.ring = self.square.exterior
-
-    # ── Базовые случаи ──
 
     def test_point_clearly_inside(self):
         result = self._check(Point(2, 2), self.ring)
@@ -156,30 +137,23 @@ class _AlgorithmMixin:
         result = self._check(Point(-1, 2), self.ring)
         self.assertEqual(result, PointLocation.OUTSIDE)
 
-    # Граничные случаи 
-
     def test_point_on_edge(self):
-        """Точка на середине ребра → ON_BOUNDARY."""
-        result = self._check(Point(2, 0), self.ring)  # нижнее ребро
+        result = self._check(Point(2, 0), self.ring)
         self.assertEqual(result, PointLocation.ON_BOUNDARY)
 
     def test_point_on_vertex(self):
-        """Точка в вершине → ON_BOUNDARY."""
         result = self._check(Point(0, 0), self.ring)
         self.assertEqual(result, PointLocation.ON_BOUNDARY)
 
     def test_point_on_top_edge(self):
-        """Точка на верхнем ребре."""
         result = self._check(Point(2, 4), self.ring)
         self.assertEqual(result, PointLocation.ON_BOUNDARY)
 
     def test_point_just_inside(self):
-        """Точка почти на границе, но внутри."""
         result = self._check(Point(0.001, 0.001), self.ring)
         self.assertEqual(result, PointLocation.INSIDE)
 
     def test_point_just_outside(self):
-        """Точка почти на границе, но снаружи."""
         result = self._check(Point(-0.001, 2), self.ring)
         self.assertEqual(result, PointLocation.OUTSIDE)
 
@@ -209,12 +183,10 @@ class TestPolygonContains(unittest.TestCase):
         self.assertEqual(result, PointLocation.OUTSIDE)
 
     def test_inside_polygon_with_hole(self):
-        """Точка в «мясе» полигона с отверстием → INSIDE."""
         result = polygon_contains(Point(0.5, 0.5), self.square_with_hole)
         self.assertEqual(result, PointLocation.INSIDE)
 
     def test_inside_hole(self):
-        """Точка в отверстии → OUTSIDE (снаружи реального полигона)."""
         result = polygon_contains(Point(2, 2), self.square_with_hole)
         self.assertEqual(result, PointLocation.OUTSIDE)
 
@@ -223,12 +195,10 @@ class TestPolygonContains(unittest.TestCase):
         self.assertEqual(result, PointLocation.ON_BOUNDARY)
 
     def test_on_hole_boundary(self):
-        """Точка на границе отверстия → ON_BOUNDARY."""
         result = polygon_contains(Point(2, 1), self.square_with_hole)
         self.assertEqual(result, PointLocation.ON_BOUNDARY)
 
     def test_both_algorithms_agree(self):
-        """Ray Casting и Winding Number должны давать одинаковые результаты."""
         test_points = [
             Point(2, 2), Point(0.5, 0.5), Point(5, 5),
             Point(2, 0), Point(0, 0), Point(2, 1)
@@ -236,7 +206,7 @@ class TestPolygonContains(unittest.TestCase):
         for p in test_points:
             rc = polygon_contains(p, self.square_with_hole, "ray_casting")
             wn = polygon_contains(p, self.square_with_hole, "winding_number")
-            self.assertEqual(rc, wn, f"Алгоритмы расходятся для точки {p}")
+            self.assertEqual(rc, wn, msg=f"point {p}")
 
 
 class TestBboxContainsPoint(unittest.TestCase):
@@ -251,8 +221,6 @@ class TestBboxContainsPoint(unittest.TestCase):
         self.assertTrue(bbox_contains_point((0, 0, 10, 10), Point(0, 5)))
         self.assertTrue(bbox_contains_point((0, 0, 10, 10), Point(10, 10)))
 
-
-# Тесты индексов
 
 class TestBoundingBoxIndex(unittest.TestCase):
 
@@ -283,7 +251,6 @@ class TestBoundingBoxIndex(unittest.TestCase):
         self.assertNotIn("p1", candidates)
 
     def test_update(self):
-        # Перемещаем полигон p1 в другое место
         new_poly = make_square(100, 100, 110, 110)
         self.index.update("p1", new_poly)
         self.assertEqual(self.index.candidates(Point(2, 2)), [])
@@ -310,13 +277,11 @@ class TestGridIndex(unittest.TestCase):
         self.assertEqual(stats["polygon_count"], 1)
 
     def test_remove_clears_grid_cells(self):
-        """После remove полигон не должен оставаться в ячейках сетки."""
         self.index.remove("p1")
         self.assertEqual(self.index.candidates(Point(2, 2)), [])
         self.assertEqual(self.index.stats()["occupied_cells"], 0)
 
     def test_update_relocates_polygon(self):
-        """После update полигон должен находиться в новом месте, но не в старом."""
         new_poly = make_square(100, 100, 110, 110)
         self.index.update("p1", new_poly)
         self.assertEqual(self.index.candidates(Point(2, 2)), [])
@@ -418,8 +383,6 @@ class TestWKT(unittest.TestCase):
         self.assertEqual(len(original), len(restored))
 
 
-#  Тесты репозитория
-
 class TestRepository(unittest.TestCase):
 
     def setUp(self):
@@ -470,7 +433,6 @@ class TestRepository(unittest.TestCase):
         self.assertEqual(len(results), 0)
 
     def test_find_multiple_matching(self):
-        """Точка может попасть в несколько перекрывающихся полигонов."""
         self.repo.create("large", make_square(0, 0, 10, 10))
         self.repo.create("small", make_square(3, 3, 7, 7))
         results = self.repo.find_containing_point(Point(5, 5))
@@ -478,7 +440,6 @@ class TestRepository(unittest.TestCase):
 
     def test_find_with_boundary_excluded(self):
         self.repo.create("square", make_square(0, 0, 10, 10))
-        # Точка на границе
         results = self.repo.find_containing_point(
             Point(5, 0), include_boundary=False
         )
@@ -496,81 +457,58 @@ class TestRepository(unittest.TestCase):
         self.assertEqual(stats["polygon_count"], 1)
 
 
-#  Интеграционные тесты API (без сети)
+class _MockHandler:
+    def __init__(self, method: str, path: str, body: dict | None = None):
+        self.command = method
+        self.path = path
+        self.status = None
+        self._chunks: list[bytes] = []
+        if body is not None:
+            raw = json.dumps(body).encode()
+            self.rfile = io.BytesIO(raw)
+            self.headers = {"Content-Length": str(len(raw))}
+        else:
+            self.rfile = io.BytesIO(b"")
+            self.headers = {"Content-Length": "0"}
+
+    def send_response(self, code: int) -> None:
+        self.status = code
+
+    def send_header(self, *_args) -> None:
+        pass
+
+    def end_headers(self) -> None:
+        pass
+
+    def log_date_time_string(self) -> str:
+        return "test"
+
+    def address_string(self) -> str:
+        return "127.0.0.1"
+
+    @property
+    def wfile(self):
+        return self
+
+    def write(self, data: bytes) -> None:
+        self._chunks.append(data)
+
 
 class TestAPI(unittest.TestCase):
-    """
-    Тесты HTTP API через прямой вызов обработчиков.
-    Создаём мок-объект handler вместо настоящего HTTP-соединения.
-    """
 
     def setUp(self):
-        import api.server as srv
-        srv.reset_repository(cell_size=1.0)
-        self.srv = srv
+        reset_repository(cell_size=1.0)
 
-    def _make_handler(self, method: str, path: str, body: dict = None) -> tuple:
-        """
-        Создать мок-хендлер и захватить JSON-ответ.
-        Возвращает (status_code, response_body).
-        """
-        handler = MagicMock()
-        handler.command = method
-        handler.path = path
-
-        # Настраиваем тело запроса
-        if body:
-            raw = json.dumps(body).encode()
-            handler.rfile = io.BytesIO(raw)
-            handler.headers = {"Content-Length": str(len(raw))}
-        else:
-            handler.rfile = io.BytesIO(b"")
-            handler.headers = {"Content-Length": "0"}
-
-        # Захватываем отправленный ответ
-        response_data = {"status": None, "body": None}
-        raw_body_parts = []
-
-        def send_response(code):
-            response_data["status"] = code
-
-        def wfile_write(data):
-            raw_body_parts.append(data)
-
-        handler.send_response = send_response
-        handler.send_header = MagicMock()
-        handler.end_headers = MagicMock()
-        handler.wfile = MagicMock()
-        handler.wfile.write = wfile_write
-        handler.address_string = lambda: "127.0.0.1"
-        handler.log_date_time_string = lambda: "test"
-
-        return handler, response_data, raw_body_parts
-
-    def _call(self, method: str, path: str, body: dict = None) -> tuple:
-        handler, response_data, raw_parts = self._make_handler(method, path, body)
-
+    def _call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
+        handler = _MockHandler(method, path, body)
         try:
-            if method == "POST" and path == "/polygons":
-                self.srv.handle_create(handler)
-            elif method == "GET" and path == "/polygons":
-                self.srv.handle_list(handler)
-            elif method == "GET" and path == "/health":
-                self.srv.handle_health(handler)
-            elif method == "POST" and path == "/query/point-in-polygon":
-                self.srv.handle_pip(handler)
-            else:
-                raise ValueError(f"Не знаю как обработать {method} {path} в тестах")
+            PolygonServiceHandler._dispatch(handler)
         except ValueError as e:
-            # Воспроизводим поведение _handle: ValueError → 400
-            self.srv._json(handler, 400, {"error": str(e)})
-
-        status = response_data["status"]
-        if raw_parts:
-            body_json = json.loads(b"".join(raw_parts).decode())
-        else:
-            body_json = {}
-        return status, body_json
+            api_server._json(handler, 400, {"error": str(e)})
+        except Exception:
+            api_server._json(handler, 500, {"error": "Внутренняя ошибка сервера"})
+        payload = json.loads(b"".join(handler._chunks).decode()) if handler._chunks else {}
+        return handler.status, payload
 
     def _create_polygon(self, name="test", x0=0, y0=0, x1=10, y1=10):
         return self._call("POST", "/polygons", {
@@ -653,25 +591,48 @@ class TestAPI(unittest.TestCase):
         status, body = self._call("POST", "/polygons", {"name": "x"})
         self.assertEqual(status, 400)
 
+    def test_get_polygon_by_id(self):
+        _, created = self._create_polygon("one")
+        status, body = self._call("GET", f"/polygons/{created['id']}")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["name"], "one")
+
+    def test_get_polygon_not_found(self):
+        status, body = self._call("GET", "/polygons/no-such-id")
+        self.assertEqual(status, 404)
+        self.assertIn("error", body)
+
+    def test_update_polygon_name(self):
+        _, created = self._create_polygon("old")
+        status, body = self._call("PUT", f"/polygons/{created['id']}", {"name": "new"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["name"], "new")
+
+    def test_delete_polygon(self):
+        _, created = self._create_polygon("gone")
+        status, _ = self._call("DELETE", f"/polygons/{created['id']}")
+        self.assertEqual(status, 200)
+        status, _ = self._call("GET", f"/polygons/{created['id']}")
+        self.assertEqual(status, 404)
+
+    def test_stats(self):
+        self._create_polygon("a")
+        status, body = self._call("GET", "/stats")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["polygon_count"], 1)
+        self.assertEqual(body["index"]["type"], "GridIndex")
+
+    def test_list_trailing_slash(self):
+        self._create_polygon("a")
+        status, body = self._call("GET", "/polygons/")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["count"], 1)
+
+    def test_options(self):
+        status, body = self._call("OPTIONS", "/polygons")
+        self.assertEqual(status, 204)
+        self.assertEqual(body, {})
+
 
 if __name__ == "__main__":
-    # Запуск с подробным выводом
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-
-    test_classes = [
-        TestPointClass, TestRingClass, TestPolygonClass,
-        TestRayCasting, TestWindingNumber, TestPolygonContains,
-        TestBboxContainsPoint,
-        TestBoundingBoxIndex, TestGridIndex,
-        TestMultiPolygon, TestWKT,
-        TestRepository,
-        TestAPI,
-    ]
-
-    for cls in test_classes:
-        suite.addTests(loader.loadTestsFromTestCase(cls))
-
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    sys.exit(0 if result.wasSuccessful() else 1)
+    unittest.main(verbosity=2)

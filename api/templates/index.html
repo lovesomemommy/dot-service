@@ -272,13 +272,6 @@
       border-color: rgba(99, 102, 241, .35);
       color: #a5a8f6;
     }
-    .status-pill.error {
-      background: rgba(239, 68, 68, .1);
-      border-color: rgba(239, 68, 68, .4);
-      color: #fca5a5;
-    }
-    input.field-error { border-color: var(--danger) !important; }
-
     .dialog-overlay {
       display: none;
       position: fixed;
@@ -713,10 +706,9 @@
   </aside>
 </div>
 
-<div id="name-dialog" class="dialog-overlay" aria-hidden="true">
-  <div class="dialog" role="dialog" aria-labelledby="name-dialog-title">
-    <h4 id="name-dialog-title">Название полигона</h4>
-    <p>Укажите имя перед сохранением.</p>
+<div id="name-dialog" class="dialog-overlay">
+  <div class="dialog">
+    <h4>Название полигона</h4>
     <input id="name-dialog-input" type="text" placeholder="Зона А" autocomplete="off">
     <div id="name-dialog-error" class="dialog-error"></div>
     <div class="dialog-actions">
@@ -726,7 +718,18 @@
   </div>
 </div>
 
-<div id="toast" class="toast" role="status"></div>
+<div id="delete-dialog" class="dialog-overlay">
+  <div class="dialog">
+    <h4>Удалить полигон?</h4>
+    <p id="delete-dialog-name"></p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" id="delete-dialog-cancel">Отмена</button>
+      <button type="button" class="btn btn-danger" id="delete-dialog-confirm">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
 <script>
@@ -758,52 +761,25 @@ let queryMarker = null;
 let queryHighlight = null;
 let toastTimer = null;
 
-class AppError extends Error {
-  constructor(message, code) {
-    super(message);
-    this.code = code;
-  }
-}
-
-function showToast(message, kind = 'error') {
+function showToast(message) {
   const el = document.getElementById('toast');
   el.textContent = message;
-  el.className = 'toast show' + (kind === 'error' ? ' error' : '');
+  el.className = 'toast show error';
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 4500);
 }
 
-function setDrawError(message) {
-  const status = document.getElementById('draw-status');
-  const nameInput = document.getElementById('poly-name');
-  if (message) {
-    status.textContent = message;
-    status.classList.add('active', 'error');
-    nameInput.classList.add('field-error');
-    nameInput.focus();
-    nameInput.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  } else {
-    status.classList.remove('error');
-    nameInput.classList.remove('field-error');
-  }
-}
-
 function openNameDialog() {
-  const overlay = document.getElementById('name-dialog');
   const input = document.getElementById('name-dialog-input');
-  const err = document.getElementById('name-dialog-error');
-  err.textContent = '';
+  document.getElementById('name-dialog-error').textContent = '';
   input.value = document.getElementById('poly-name').value.trim();
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-hidden', 'false');
+  document.getElementById('name-dialog').classList.add('show');
   map.closePopup();
-  requestAnimationFrame(() => input.focus());
+  input.focus();
 }
 
 function closeNameDialog() {
-  const overlay = document.getElementById('name-dialog');
-  overlay.classList.remove('show');
-  overlay.setAttribute('aria-hidden', 'true');
+  document.getElementById('name-dialog').classList.remove('show');
   document.getElementById('name-dialog-error').textContent = '';
 }
 
@@ -817,7 +793,6 @@ function confirmNameDialog() {
   }
   document.getElementById('poly-name').value = name;
   closeNameDialog();
-  setDrawError(null);
   submitPolygon();
 }
 
@@ -832,7 +807,33 @@ document.getElementById('name-dialog-input').addEventListener('keydown', e => {
   if (e.key === 'Escape') closeNameDialog();
 });
 
-document.getElementById('poly-name').addEventListener('input', () => setDrawError(null));
+let pendingDeleteId = null;
+
+function openDeleteDialog(id, name) {
+  pendingDeleteId = id;
+  document.getElementById('delete-dialog-name').textContent = name || id.slice(0, 8);
+  document.getElementById('delete-dialog').classList.add('show');
+  map.closePopup();
+}
+
+function closeDeleteDialog() {
+  document.getElementById('delete-dialog').classList.remove('show');
+  pendingDeleteId = null;
+}
+
+async function executeDelete() {
+  const id = pendingDeleteId;
+  closeDeleteDialog();
+  if (!id) return;
+  await deletePolygon(id);
+}
+
+document.getElementById('delete-dialog-cancel').addEventListener('click', closeDeleteDialog);
+document.getElementById('delete-dialog-confirm').addEventListener('click', executeDelete);
+document.getElementById('delete-dialog').addEventListener('click', e => {
+  if (e.target.id === 'delete-dialog') closeDeleteDialog();
+});
+document.querySelector('#delete-dialog .dialog').addEventListener('click', e => e.stopPropagation());
 
 function colorFor(id) {
   let h = 0;
@@ -932,7 +933,7 @@ function redrawDraft() {
 
 function buildBody() {
   const name = document.getElementById('poly-name').value.trim();
-  if (!name) throw new AppError('Введите название', 'NAME_REQUIRED');
+  if (!name) return null;
 
   const propsRaw = document.getElementById('poly-props').value.trim();
   let properties = {};
@@ -965,14 +966,12 @@ async function submitPolygon() {
   let body;
   try {
     body = buildBody();
-    setDrawError(null);
   } catch (e) {
-    if (e instanceof AppError && e.code === 'NAME_REQUIRED') {
-      openNameDialog();
-      return;
-    }
-    setDrawError(e.message);
     showToast(e.message);
+    return;
+  }
+  if (body === null) {
+    openNameDialog();
     return;
   }
 
@@ -1021,7 +1020,9 @@ function bindPopupActions(popup, record) {
   if (!content) return;
   L.DomEvent.disableClickPropagation(content);
   content.querySelector('[data-action="focus"]')?.addEventListener('click', () => focusPolygon(record.id));
-  content.querySelector('[data-action="delete"]')?.addEventListener('click', () => deletePolygon(record.id));
+  content.querySelector('[data-action="delete"]')?.addEventListener('click', () => {
+    openDeleteDialog(record.id, record.name);
+  });
 }
 
 function addPolygonLayer(record) {
@@ -1065,7 +1066,6 @@ function focusPolygon(id) {
 }
 
 async function deletePolygon(id) {
-  if (!window.confirm('Удалить полигон?')) return;
   const r = await fetch(`/polygons/${id}`, { method: 'DELETE' });
   if (!r.ok) { showToast('Не удалось удалить'); return; }
   if (polyLayers[id]) { map.removeLayer(polyLayers[id]); delete polyLayers[id]; }
@@ -1110,7 +1110,10 @@ function refreshList() {
       <span class="meta-id">${id.slice(0, 6)}</span>
       <button class="x" title="удалить">×</button>
     `;
-    el.querySelector('.x').onclick = ev => { ev.stopPropagation(); deletePolygon(id); };
+    el.querySelector('.x').onclick = ev => {
+      ev.stopPropagation();
+      openDeleteDialog(id, rec.name);
+    };
     list.appendChild(el);
   });
 }

@@ -12,24 +12,39 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
 
 _repository: PolygonRepository | None = None
 
+CORS_ORIGIN = "*"
+CORS_METHODS = "GET, POST, PUT, DELETE, OPTIONS"
+CORS_HEADERS = "Content-Type"
 
-def get_repository() -> PolygonRepository:
+
+def configure_repository(cell_size: float = 1.0) -> PolygonRepository:
     global _repository
-    if _repository is None:
-        _repository = PolygonRepository(index_cell_size=1.0)
+    _repository = PolygonRepository(index_cell_size=cell_size)
     return _repository
 
 
-def reset_repository(cell_size: float = 1.0) -> None:
-    global _repository
-    _repository = PolygonRepository(index_cell_size=cell_size)
+def get_repository() -> PolygonRepository:
+    if _repository is None:
+        configure_repository()
+    return _repository
+
+
+def reset_repository(cell_size: float = 1.0) -> PolygonRepository:
+    return configure_repository(cell_size)  # alias for tests
+
+
+def _send_cors(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+    handler.send_header("Access-Control-Allow-Methods", CORS_METHODS)
+    handler.send_header("Access-Control-Allow-Headers", CORS_HEADERS)
 
 
 def _json(handler: BaseHTTPRequestHandler, status: int, data: dict) -> None:
-    body = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    body = json.dumps(data, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    _send_cors(handler)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -46,7 +61,10 @@ def _read_body(handler: BaseHTTPRequestHandler) -> dict:
 
 def _parse_path(path: str) -> tuple[str, str | None]:
     parts = path.strip("/").split("/")
-    return parts[0], parts[1] if len(parts) > 1 else None
+    if not parts or parts == [""]:
+        return "", None
+    rid = parts[1] if len(parts) > 1 else None
+    return parts[0], rid or None
 
 
 def _render(template: str, **kwargs) -> str:
@@ -58,19 +76,14 @@ def _render(template: str, **kwargs) -> str:
 
 
 def _parse_geometry(body: dict):
-    """
-    Извлечь геометрию из тела запроса.
-    Поддерживаются два варианта: GeoJSON в поле 'geometry' или WKT в поле 'wkt'.
-    """
-    if "wkt" in body and body["wkt"]:
+    if body.get("wkt"):
         return parse_wkt(body["wkt"])
-    if "geometry" in body and body["geometry"]:
+    if body.get("geometry"):
         return geometry_from_geojson(body["geometry"])
-    raise ValueError("Нужно указать одно из полей: 'geometry' (GeoJSON) или 'wkt'")
+    raise ValueError("Нужно поле geometry или wkt")
 
 
-def _enrich_record(record_dict: dict, geometry) -> dict:
-    """Добавить к ответу WKT-представление, чтобы клиент мог выбирать формат."""
+def _record_payload(record_dict: dict, geometry) -> dict:
     record_dict["wkt"] = to_wkt(geometry)
     return record_dict
 
@@ -81,8 +94,15 @@ def handle_root(handler: BaseHTTPRequestHandler) -> None:
     handler.send_response(200)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    _send_cors(handler)
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def handle_options(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_response(204)
+    _send_cors(handler)
+    handler.end_headers()
 
 
 def handle_health(handler: BaseHTTPRequestHandler) -> None:
@@ -98,24 +118,22 @@ def handle_list(handler: BaseHTTPRequestHandler) -> None:
     records = get_repository().list_all()
     _json(handler, 200, {
         "count": len(records),
-        "polygons": [_enrich_record(r.to_dict(), r.geometry) for r in records],
+        "polygons": [_record_payload(r.to_dict(), r.geometry) for r in records],
     })
 
 
 def handle_create(handler: BaseHTTPRequestHandler) -> None:
     body = _read_body(handler)
-
     name = body.get("name", "")
     if not name:
         raise ValueError("Поле 'name' обязательно")
-
     geometry = _parse_geometry(body)
     record = get_repository().create(
         name=name,
         geometry=geometry,
-        properties=body.get("properties", {}),
+        properties=body.get("properties") or {},
     )
-    _json(handler, 201, _enrich_record(record.to_dict(), record.geometry))
+    _json(handler, 201, _record_payload(record.to_dict(), record.geometry))
 
 
 def handle_get(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
@@ -123,15 +141,14 @@ def handle_get(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
     if record is None:
         _json(handler, 404, {"error": f"Полигон '{polygon_id}' не найден"})
         return
-    _json(handler, 200, _enrich_record(record.to_dict(), record.geometry))
+    _json(handler, 200, _record_payload(record.to_dict(), record.geometry))
 
 
 def handle_update(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
     body = _read_body(handler)
     geometry = None
-    if "geometry" in body or "wkt" in body:
+    if body.get("wkt") or body.get("geometry"):
         geometry = _parse_geometry(body)
-
     record = get_repository().update(
         polygon_id=polygon_id,
         name=body.get("name"),
@@ -141,7 +158,7 @@ def handle_update(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
     if record is None:
         _json(handler, 404, {"error": f"Полигон '{polygon_id}' не найден"})
         return
-    _json(handler, 200, _enrich_record(record.to_dict(), record.geometry))
+    _json(handler, 200, _record_payload(record.to_dict(), record.geometry))
 
 
 def handle_delete(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
@@ -153,25 +170,21 @@ def handle_delete(handler: BaseHTTPRequestHandler, polygon_id: str) -> None:
 
 def handle_pip(handler: BaseHTTPRequestHandler) -> None:
     body = _read_body(handler)
-
     raw_point = body.get("point")
     if not raw_point or len(raw_point) < 2:
         raise ValueError("Поле 'point' обязательно: [x, y]")
-
     algorithm = body.get("algorithm", "ray_casting")
     if algorithm not in ("ray_casting", "winding_number"):
         raise ValueError("algorithm: 'ray_casting' или 'winding_number'")
-
     point = Point.from_list(raw_point)
     include = body.get("include_boundary", True)
     records = get_repository().find_containing_point(point, algorithm, include)
-
     _json(handler, 200, {
         "point": raw_point,
         "algorithm": algorithm,
         "include_boundary": include,
         "matching_count": len(records),
-        "matching_polygons": [_enrich_record(r.to_dict(), r.geometry) for r in records],
+        "matching_polygons": [_record_payload(r.to_dict(), r.geometry) for r in records],
     })
 
 
@@ -183,17 +196,19 @@ class PolygonServiceHandler(BaseHTTPRequestHandler):
     def _dispatch(self) -> None:
         path = urlparse(self.path).path
         method = self.command
-        resource, rid = _parse_path(path)
 
+        if method == "OPTIONS":
+            return handle_options(self)
         if method == "GET" and path == "/":
             return handle_root(self)
-        if method == "GET" and resource == "health":
+        if method == "GET" and path == "/health":
             return handle_health(self)
-        if method == "GET" and resource == "stats":
+        if method == "GET" and path == "/stats":
             return handle_stats(self)
         if method == "POST" and path == "/query/point-in-polygon":
             return handle_pip(self)
 
+        resource, rid = _parse_path(path)
         if resource == "polygons":
             if method == "GET" and rid is None:
                 return handle_list(self)
@@ -217,14 +232,21 @@ class PolygonServiceHandler(BaseHTTPRequestHandler):
             print(f"[ERROR]\n{traceback.format_exc()}")
             _json(self, 500, {"error": "Внутренняя ошибка сервера"})
 
-    do_GET = do_POST = do_PUT = do_DELETE = _handle
+    do_GET = do_POST = do_PUT = do_DELETE = do_OPTIONS = _handle
 
 
-def run_server(host: str = "127.0.0.1", port: int = 8080) -> None:
+def run_server(
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    repository: PolygonRepository | None = None,
+) -> None:
+    global _repository
+    if repository is not None:
+        _repository = repository
+    elif _repository is None:
+        configure_repository()
     server = HTTPServer((host, port), PolygonServiceHandler)
-    print(f"Сервер слушает http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nСервер остановлен")
         server.server_close()

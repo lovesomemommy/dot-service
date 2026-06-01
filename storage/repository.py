@@ -20,11 +20,6 @@ class PolygonRecord:
     created_at: datetime = field(default_factory=_now)
     updated_at: datetime = field(default_factory=_now)
 
-    @property
-    def polygon(self) -> Geometry:
-        # Сохраняем обратную совместимость со старым именем поля.
-        return self.geometry
-
     def to_dict(self) -> dict:
         return {
             "id": self.id,

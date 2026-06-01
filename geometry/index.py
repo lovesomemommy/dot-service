@@ -1,26 +1,21 @@
 import math
-from .types import Point, Polygon
+from .types import Point, Geometry
 
 
 class BoundingBoxIndex:
-    """
-    Самый простой пространственный индекс: хранит AABB для каждого полигона,
-    при запросе линейно проходит все боксы. Используется как fallback и как
-    база для более продвинутых индексов.
-    """
 
     def __init__(self):
         self._bboxes: dict[str, tuple[float, float, float, float]] = {}
 
-    def add(self, polygon_id: str, polygon: Polygon) -> None:
-        self._bboxes[polygon_id] = polygon.bounding_box()
+    def add(self, polygon_id: str, geometry: Geometry) -> None:
+        self._bboxes[polygon_id] = geometry.bounding_box()
 
     def remove(self, polygon_id: str) -> None:
         self._bboxes.pop(polygon_id, None)
 
-    def update(self, polygon_id: str, polygon: Polygon) -> None:
+    def update(self, polygon_id: str, geometry: Geometry) -> None:
         self.remove(polygon_id)
-        self.add(polygon_id, polygon)
+        self.add(polygon_id, geometry)
 
     def candidates(self, point: Point) -> list[str]:
         px, py = point.x, point.y
@@ -37,11 +32,6 @@ class BoundingBoxIndex:
 
 
 class GridIndex(BoundingBoxIndex):
-    """
-    Равномерная сетка. Каждый полигон регистрируется во всех ячейках, которые
-    пересекает его AABB. Запрос по точке: O(1) попадание в ячейку + точная
-    проверка только тех полигонов, что в этой ячейке.
-    """
 
     def __init__(self, cell_size: float = 1.0):
         super().__init__()
@@ -56,9 +46,9 @@ class GridIndex(BoundingBoxIndex):
         cx1, cy1 = self._to_cell(x1, y1)
         return [(gx, gy) for gx in range(cx0, cx1 + 1) for gy in range(cy0, cy1 + 1)]
 
-    def add(self, polygon_id: str, polygon: Polygon) -> None:
-        super().add(polygon_id, polygon)
-        for cell in self._bbox_cells(*polygon.bounding_box()):
+    def add(self, polygon_id: str, geometry: Geometry) -> None:
+        super().add(polygon_id, geometry)
+        for cell in self._bbox_cells(*geometry.bounding_box()):
             self._grid.setdefault(cell, set()).add(polygon_id)
 
     def remove(self, polygon_id: str) -> None:
@@ -74,9 +64,9 @@ class GridIndex(BoundingBoxIndex):
                 del self._grid[cell]
         super().remove(polygon_id)
 
-    def update(self, polygon_id: str, polygon: Polygon) -> None:
+    def update(self, polygon_id: str, geometry: Geometry) -> None:
         self.remove(polygon_id)
-        self.add(polygon_id, polygon)
+        self.add(polygon_id, geometry)
 
     def candidates(self, point: Point) -> list[str]:
         cell = self._to_cell(point.x, point.y)

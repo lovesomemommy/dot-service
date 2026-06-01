@@ -144,7 +144,6 @@ Geometry = Union[Polygon, MultiPolygon]
 
 
 def geometry_from_geojson(geojson: dict) -> Geometry:
-    """Распознать тип геометрии и вернуть Polygon или MultiPolygon."""
     if geojson.get("type") == "Feature":
         geojson = geojson.get("geometry") or {}
     t = geojson.get("type")

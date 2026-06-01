@@ -1,12 +1,6 @@
-"""
-Парсер и сериализатор подмножества WKT (Well-Known Text).
-Поддерживаются: POLYGON, MULTIPOLYGON, в том числе с отверстиями.
-Спецификация — OGC 06-103r4, §7.2.
-"""
 import re
 
 from .types import Point, Ring, Polygon, MultiPolygon, Geometry
-
 
 _NUM = r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?"
 _POINT_PAIR = re.compile(rf"\s*({_NUM})\s+({_NUM})\s*")
@@ -27,7 +21,6 @@ def _parse_ring(text: str) -> Ring:
 
 
 def _split_rings(body: str) -> list[str]:
-    """Разделить '(...), (...)' на отдельные кольца."""
     rings = []
     depth = 0
     start = None
@@ -41,7 +34,7 @@ def _split_rings(body: str) -> list[str]:
             if depth == 0:
                 rings.append(body[start:i])
     if depth != 0:
-        raise ValueError("Неcбалансированные скобки в WKT")
+        raise ValueError("Несбалансированные скобки в WKT")
     return rings
 
 
@@ -76,7 +69,7 @@ def parse_wkt(text: str) -> Geometry:
             ))
         return MultiPolygon(polygons=polygons)
 
-    raise ValueError(f"Неизвестный тип WKT (ожидался POLYGON или MULTIPOLYGON): '{text[:30]}...'")
+    raise ValueError(f"Неизвестный тип WKT: '{text[:30]}...'")
 
 
 def _ring_to_wkt(ring: Ring) -> str:
