@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <title>Polygon Service</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://a.tile.openstreetmap.org">
+  <link rel="preconnect" href="https://b.tile.openstreetmap.org">
+  <link rel="preconnect" href="https://c.tile.openstreetmap.org">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
   <style>
     :root {
       --bg: #0a0a0f;
@@ -22,8 +23,8 @@
       --success: #10b981;
       --danger: #ef4444;
       --warn: #f59e0b;
-      --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
-      --sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+      --sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
       --radius: 8px;
       --radius-sm: 5px;
       --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
@@ -95,8 +96,28 @@
       grid-template-columns: 1fr 420px;
       min-height: 0;
     }
-    #map { background: #1a1a20; }
+    .map-wrap {
+      position: relative;
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #1a1a20;
+    }
     .leaflet-container { background: #1a1a20; font-family: var(--sans); }
+    .map-credit {
+      position: absolute;
+      right: 8px;
+      bottom: 6px;
+      z-index: 1000;
+      font-size: 10px;
+      color: var(--text-faint);
+      pointer-events: none;
+      user-select: none;
+    }
 
     aside {
       border-left: 1px solid var(--border);
@@ -251,6 +272,78 @@
       border-color: rgba(99, 102, 241, .35);
       color: #a5a8f6;
     }
+    .status-pill.error {
+      background: rgba(239, 68, 68, .1);
+      border-color: rgba(239, 68, 68, .4);
+      color: #fca5a5;
+    }
+    input.field-error { border-color: var(--danger) !important; }
+
+    .dialog-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      background: rgba(0, 0, 0, .6);
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      pointer-events: auto;
+    }
+    .dialog-overlay.show { display: flex; }
+    .dialog {
+      width: 100%;
+      max-width: 360px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      pointer-events: auto;
+    }
+    .dialog h4 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .dialog p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .dialog-error {
+      font-size: 12px;
+      color: #fca5a5;
+      min-height: 18px;
+      margin-top: 6px;
+    }
+    .dialog-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .dialog-actions .btn { margin-top: 0; flex: 1; }
+
+    .toast {
+      display: none;
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      transform: translateX(-50%);
+      z-index: 21000;
+      max-width: min(420px, calc(100vw - 32px));
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      font-size: 13px;
+      box-shadow: var(--shadow);
+      pointer-events: auto;
+    }
+    .toast.show { display: block; }
+    .toast.error { border-color: rgba(239, 68, 68, .5); color: #fecaca; }
 
     .format-tabs {
       display: flex;
@@ -490,12 +583,7 @@
       border: 1px solid var(--border) !important;
     }
     .leaflet-control-zoom a:hover { background: var(--surface-2) !important; }
-    .leaflet-control-attribution {
-      background: rgba(10, 10, 15, .85) !important;
-      color: var(--text-muted) !important;
-      font-size: 10px !important;
-    }
-    .leaflet-control-attribution a { color: var(--text-muted) !important; }
+    .leaflet-control-attribution { display: none !important; }
 
     .checkbox-row {
       display: flex;
@@ -518,7 +606,6 @@
   </div>
   <div class="meta">
     <span><b id="poly-count">{polygon_count}</b> полигонов</span>
-    <span>Python <b>{python_version}</b></span>
   </div>
   <div class="links">
     <a href="/health" target="_blank">/health</a>
@@ -528,7 +615,10 @@
 </header>
 
 <div class="layout">
-  <div id="map"></div>
+  <div class="map-wrap">
+    <div id="map"></div>
+    <span class="map-credit">© OpenStreetMap</span>
+  </div>
 
   <aside>
     <div class="mode-tabs">
@@ -623,14 +713,39 @@
   </aside>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div id="name-dialog" class="dialog-overlay" aria-hidden="true">
+  <div class="dialog" role="dialog" aria-labelledby="name-dialog-title">
+    <h4 id="name-dialog-title">Название полигона</h4>
+    <p>Укажите имя перед сохранением.</p>
+    <input id="name-dialog-input" type="text" placeholder="Зона А" autocomplete="off">
+    <div id="name-dialog-error" class="dialog-error"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-ghost" id="name-dialog-cancel">Отмена</button>
+      <button type="button" class="btn btn-primary" id="name-dialog-confirm">Создать</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
 <script>
 const PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
-const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([55.7558, 37.6173], 11);
+const map = L.map('map', {
+  zoomControl: true,
+  doubleClickZoom: false,
+  attributionControl: false,
+}).setView([55.7558, 37.6173], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap',
   maxZoom: 19,
 }).addTo(map);
+
+function syncMapSize() {
+  map.invalidateSize({ animate: false });
+}
+
+window.addEventListener('resize', syncMapSize);
+window.addEventListener('load', syncMapSize);
 
 let mode = 'draw';
 let inputFormat = 'map';
@@ -641,6 +756,83 @@ const polyLayers = {};
 const polyById = {};
 let queryMarker = null;
 let queryHighlight = null;
+let toastTimer = null;
+
+class AppError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+}
+
+function showToast(message, kind = 'error') {
+  const el = document.getElementById('toast');
+  el.textContent = message;
+  el.className = 'toast show' + (kind === 'error' ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4500);
+}
+
+function setDrawError(message) {
+  const status = document.getElementById('draw-status');
+  const nameInput = document.getElementById('poly-name');
+  if (message) {
+    status.textContent = message;
+    status.classList.add('active', 'error');
+    nameInput.classList.add('field-error');
+    nameInput.focus();
+    nameInput.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } else {
+    status.classList.remove('error');
+    nameInput.classList.remove('field-error');
+  }
+}
+
+function openNameDialog() {
+  const overlay = document.getElementById('name-dialog');
+  const input = document.getElementById('name-dialog-input');
+  const err = document.getElementById('name-dialog-error');
+  err.textContent = '';
+  input.value = document.getElementById('poly-name').value.trim();
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  map.closePopup();
+  requestAnimationFrame(() => input.focus());
+}
+
+function closeNameDialog() {
+  const overlay = document.getElementById('name-dialog');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.getElementById('name-dialog-error').textContent = '';
+}
+
+function confirmNameDialog() {
+  const input = document.getElementById('name-dialog-input');
+  const name = input.value.trim();
+  if (!name) {
+    document.getElementById('name-dialog-error').textContent = 'Введите название';
+    input.focus();
+    return;
+  }
+  document.getElementById('poly-name').value = name;
+  closeNameDialog();
+  setDrawError(null);
+  submitPolygon();
+}
+
+document.getElementById('name-dialog-cancel').addEventListener('click', closeNameDialog);
+document.getElementById('name-dialog-confirm').addEventListener('click', confirmNameDialog);
+document.getElementById('name-dialog').addEventListener('click', e => {
+  if (e.target.id === 'name-dialog') closeNameDialog();
+});
+document.querySelector('#name-dialog .dialog').addEventListener('click', e => e.stopPropagation());
+document.getElementById('name-dialog-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); confirmNameDialog(); }
+  if (e.key === 'Escape') closeNameDialog();
+});
+
+document.getElementById('poly-name').addEventListener('input', () => setDrawError(null));
 
 function colorFor(id) {
   let h = 0;
@@ -740,7 +932,7 @@ function redrawDraft() {
 
 function buildBody() {
   const name = document.getElementById('poly-name').value.trim();
-  if (!name) throw new Error('Введите название');
+  if (!name) throw new AppError('Введите название', 'NAME_REQUIRED');
 
   const propsRaw = document.getElementById('poly-props').value.trim();
   let properties = {};
@@ -771,8 +963,18 @@ function buildBody() {
 
 async function submitPolygon() {
   let body;
-  try { body = buildBody(); }
-  catch (e) { alert(e.message); return; }
+  try {
+    body = buildBody();
+    setDrawError(null);
+  } catch (e) {
+    if (e instanceof AppError && e.code === 'NAME_REQUIRED') {
+      openNameDialog();
+      return;
+    }
+    setDrawError(e.message);
+    showToast(e.message);
+    return;
+  }
 
   const r = await fetch('/polygons', {
     method: 'POST',
@@ -780,8 +982,12 @@ async function submitPolygon() {
     body: JSON.stringify(body),
   });
   const data = await r.json();
-  if (!r.ok) { alert(data.error || 'Ошибка'); return; }
+  if (!r.ok) {
+    showToast(data.error || 'Ошибка');
+    return;
+  }
 
+  closeNameDialog();
   clearDraft();
   document.getElementById('poly-name').value = '';
   document.getElementById('poly-props').value = '';
@@ -801,10 +1007,21 @@ function buildPopupHtml(record) {
     `<div class="pop-id">${record.id.slice(0, 8)}…</div>` +
     propsHtml +
     `<div class="pop-actions">` +
-    `  <button onclick="focusPolygon('${record.id}')">Приблизить</button>` +
-    `  <button class="danger" onclick="deletePolygon('${record.id}')">Удалить</button>` +
+    `  <button type="button" data-action="focus" data-id="${record.id}">Приблизить</button>` +
+    `  <button type="button" class="danger" data-action="delete" data-id="${record.id}">Удалить</button>` +
     `</div>`
   );
+}
+
+function bindPopupActions(popup, record) {
+  const el = popup.getElement();
+  if (!el) return;
+  L.DomEvent.disableClickPropagation(el);
+  const content = el.querySelector('.leaflet-popup-content');
+  if (!content) return;
+  L.DomEvent.disableClickPropagation(content);
+  content.querySelector('[data-action="focus"]')?.addEventListener('click', () => focusPolygon(record.id));
+  content.querySelector('[data-action="delete"]')?.addEventListener('click', () => deletePolygon(record.id));
 }
 
 function addPolygonLayer(record) {
@@ -825,10 +1042,12 @@ function addPolygonLayer(record) {
     } else if (mode === 'draw' && inputFormat === 'map') {
       addVertex(e.latlng);
     } else {
-      L.popup({ closeButton: true, autoClose: true })
+      const rec = polyById[record.id] || record;
+      const popup = L.popup({ closeButton: true, autoClose: true })
         .setLatLng(e.latlng)
-        .setContent(buildPopupHtml(polyById[record.id] || record))
-        .openOn(map);
+        .setContent(buildPopupHtml(rec));
+      popup.openOn(map);
+      bindPopupActions(popup, rec);
     }
   });
 
@@ -846,9 +1065,9 @@ function focusPolygon(id) {
 }
 
 async function deletePolygon(id) {
-  if (!confirm('Удалить полигон?')) return;
+  if (!window.confirm('Удалить полигон?')) return;
   const r = await fetch(`/polygons/${id}`, { method: 'DELETE' });
-  if (!r.ok) { alert('Не удалось удалить'); return; }
+  if (!r.ok) { showToast('Не удалось удалить'); return; }
   if (polyLayers[id]) { map.removeLayer(polyLayers[id]); delete polyLayers[id]; }
   delete polyById[id];
   map.closePopup();
@@ -861,11 +1080,14 @@ async function reloadPolygons() {
   for (const k of Object.keys(polyLayers)) delete polyLayers[k];
   for (const k of Object.keys(polyById)) delete polyById[k];
 
-  const r = await fetch('/polygons');
-  const data = await r.json();
+  const [polyRes, statsRes] = await Promise.all([
+    fetch('/polygons'),
+    fetch('/stats'),
+  ]);
+  const data = await polyRes.json();
   if (data.polygons) data.polygons.forEach(p => addPolygonLayer(p));
+  applyStats(await statsRes.json());
   refreshList();
-  refreshStats();
 }
 
 function refreshList() {
@@ -893,13 +1115,17 @@ function refreshList() {
   });
 }
 
+function applyStats(data) {
+  const idx = data.index || {};
+  document.getElementById('stat-type').textContent = idx.type || '—';
+  document.getElementById('stat-count').textContent = idx.polygon_count ?? '—';
+  document.getElementById('stat-cells').textContent = idx.occupied_cells ?? '—';
+  document.getElementById('stat-size').textContent = idx.cell_size ?? '—';
+}
+
 async function refreshStats() {
   const r = await fetch('/stats');
-  const data = await r.json();
-  document.getElementById('stat-type').textContent = data.index.type || '—';
-  document.getElementById('stat-count').textContent = data.index.polygon_count ?? '—';
-  document.getElementById('stat-cells').textContent = data.index.occupied_cells ?? '—';
-  document.getElementById('stat-size').textContent = data.index.cell_size ?? '—';
+  applyStats(await r.json());
 }
 
 async function queryAt(latlng) {
@@ -971,7 +1197,12 @@ function toggleJson(id, btn) {
   btn.textContent = open ? 'скрыть ответ' : 'показать ответ сервера';
 }
 
-reloadPolygons();
+map.whenReady(() => {
+  requestAnimationFrame(() => {
+    syncMapSize();
+    reloadPolygons();
+  });
+});
 </script>
 </body>
 </html>

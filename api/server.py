@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
@@ -23,7 +22,7 @@ def get_repository() -> PolygonRepository:
 
 def reset_repository(cell_size: float = 1.0) -> None:
     global _repository
-    _repository = PolygonRepository(cell_size)
+    _repository = PolygonRepository(index_cell_size=cell_size)
 
 
 def _json(handler: BaseHTTPRequestHandler, status: int, data: dict) -> None:
@@ -77,9 +76,7 @@ def _enrich_record(record_dict: dict, geometry) -> dict:
 
 
 def handle_root(handler: BaseHTTPRequestHandler) -> None:
-    html = _render("index.html",
-                   polygon_count=get_repository().count(),
-                   python_version=sys.version.split()[0])
+    html = _render("index.html", polygon_count=get_repository().count())
     body = html.encode("utf-8")
     handler.send_response(200)
     handler.send_header("Content-Type", "text/html; charset=utf-8")
@@ -225,7 +222,7 @@ class PolygonServiceHandler(BaseHTTPRequestHandler):
 
 def run_server(host: str = "127.0.0.1", port: int = 8080) -> None:
     server = HTTPServer((host, port), PolygonServiceHandler)
-    print(f"Listening on http://{host}:{port}")
+    print(f"Сервер слушает http://{host}:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
