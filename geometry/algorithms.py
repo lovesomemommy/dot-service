@@ -1,43 +1,37 @@
 from enum import Enum
-from .types import Point, Ring, Polygon
+
+from .types import Point, Ring, Polygon, MultiPolygon, Geometry
 
 EPSILON = 1e-10
 
 
 class PointLocation(Enum):
-    INSIDE      = "inside"
-    OUTSIDE     = "outside"
+    INSIDE = "inside"
+    OUTSIDE = "outside"
     ON_BOUNDARY = "on_boundary"
 
 
-# Вспомогательные функции
-
 def _is_on_segment(p: Point, a: Point, b: Point) -> bool:
-    """Лежит ли точка P на отрезке AB."""
     cross = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
     if abs(cross) > EPSILON:
         return False
     return (
-        min(a.x, b.x) - EPSILON <= p.x <= max(a.x, b.x) + EPSILON and
-        min(a.y, b.y) - EPSILON <= p.y <= max(a.y, b.y) + EPSILON
+        min(a.x, b.x) - EPSILON <= p.x <= max(a.x, b.x) + EPSILON
+        and min(a.y, b.y) - EPSILON <= p.y <= max(a.y, b.y) + EPSILON
     )
 
 
 def _cross_z(o: Point, a: Point, b: Point) -> float:
-    """Z-компонента векторного произведения OA × OB."""
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
 
 
-# Алгоритм 1 Ray Casting
-
 def ray_casting(point: Point, ring: Ring) -> PointLocation:
     """
-    Из точки P проводим горизонтальный луч вправо.
-    Считаем, сколько рёбер кольца он пересекает.
-    Нечётно → INSIDE, чётно → OUTSIDE.
+    Из точки проводим горизонтальный луч вправо и считаем пересечения с рёбрами.
+    Нечётное число пересечений — внутри, чётное — снаружи.
     """
     pts = ring.points
-    n   = len(pts)
+    n = len(pts)
     px, py = point.x, point.y
     inside = False
 
@@ -48,7 +42,6 @@ def ray_casting(point: Point, ring: Ring) -> PointLocation:
         if _is_on_segment(point, a, b):
             return PointLocation.ON_BOUNDARY
 
-        # Ребро пересекает горизонталь y = py?
         if (a.y > py) != (b.y > py):
             x_cross = a.x + (py - a.y) * (b.x - a.x) / (b.y - a.y)
             if px < x_cross:
@@ -57,15 +50,14 @@ def ray_casting(point: Point, ring: Ring) -> PointLocation:
     return PointLocation.INSIDE if inside else PointLocation.OUTSIDE
 
 
-# Алгоритм 2 Winding Number
-
 def winding_number(point: Point, ring: Ring) -> PointLocation:
     """
-    Считаем сколько раз контур обматывается вокруг точки P.
-    wn != 0 → INSIDE, wn == 0 → OUTSIDE.
+    Считаем, сколько раз контур обматывается вокруг точки.
+    Если winding number не равен нулю — точка внутри.
+    Алгоритм устойчивее к самопересечениям, чем ray casting.
     """
     pts = ring.points
-    n   = len(pts)
+    n = len(pts)
     px, py = point.x, point.y
     wn = 0
 
@@ -77,16 +69,14 @@ def winding_number(point: Point, ring: Ring) -> PointLocation:
             return PointLocation.ON_BOUNDARY
 
         if a.y <= py:
-            if b.y > py and _cross_z(a, b, point) > 0:   # ребро идёт вверх, P слева
+            if b.y > py and _cross_z(a, b, point) > 0:
                 wn += 1
         else:
-            if b.y <= py and _cross_z(a, b, point) < 0:  # ребро идёт вниз, P справа
+            if b.y <= py and _cross_z(a, b, point) < 0:
                 wn -= 1
 
     return PointLocation.INSIDE if wn != 0 else PointLocation.OUTSIDE
 
-
-# Точка в полигоне с отверстиями(парками например)
 
 def polygon_contains(
     point: Point,
@@ -104,12 +94,43 @@ def polygon_contains(
         if hole_loc == PointLocation.ON_BOUNDARY:
             return PointLocation.ON_BOUNDARY
         if hole_loc == PointLocation.INSIDE:
-            return PointLocation.OUTSIDE  # точка в дыре — снаружи полигона
+            return PointLocation.OUTSIDE
 
     return PointLocation.INSIDE
 
 
+def multipolygon_contains(
+    point: Point,
+    multi: MultiPolygon,
+    algorithm: str = "ray_casting",
+) -> PointLocation:
+    """
+    Точка принадлежит MultiPolygon, если принадлежит хотя бы одной из его частей.
+    Граница имеет приоритет над «внутри»: если точка лежит на границе любой части,
+    возвращаем ON_BOUNDARY.
+    """
+    found_inside = False
+    for part in multi.polygons:
+        loc = polygon_contains(point, part, algorithm)
+        if loc == PointLocation.ON_BOUNDARY:
+            return PointLocation.ON_BOUNDARY
+        if loc == PointLocation.INSIDE:
+            found_inside = True
+    return PointLocation.INSIDE if found_inside else PointLocation.OUTSIDE
+
+
+def geometry_contains(
+    point: Point,
+    geometry: Geometry,
+    algorithm: str = "ray_casting",
+) -> PointLocation:
+    if isinstance(geometry, Polygon):
+        return polygon_contains(point, geometry, algorithm)
+    if isinstance(geometry, MultiPolygon):
+        return multipolygon_contains(point, geometry, algorithm)
+    raise TypeError(f"Неизвестный тип геометрии: {type(geometry).__name__}")
+
+
 def bbox_contains_point(bbox: tuple, point: Point) -> bool:
-    """O(1) предфильтр: попадает ли точка в bounding box (min_x, min_y, max_x, max_y)."""
     min_x, min_y, max_x, max_y = bbox
     return min_x <= point.x <= max_x and min_y <= point.y <= max_y

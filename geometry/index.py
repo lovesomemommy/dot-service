@@ -4,8 +4,9 @@ from .types import Point, Polygon
 
 class BoundingBoxIndex:
     """
-    Индекс на основе ограничивающих прямоугольников (AABB).
-    Первый уровень отсева перед точным PIP-алгоритмом.
+    Самый простой пространственный индекс: хранит AABB для каждого полигона,
+    при запросе линейно проходит все боксы. Используется как fallback и как
+    база для более продвинутых индексов.
     """
 
     def __init__(self):
@@ -18,10 +19,10 @@ class BoundingBoxIndex:
         self._bboxes.pop(polygon_id, None)
 
     def update(self, polygon_id: str, polygon: Polygon) -> None:
+        self.remove(polygon_id)
         self.add(polygon_id, polygon)
 
     def candidates(self, point: Point) -> list[str]:
-        """Вернуть ID полигонов, чьи AABB содержат точку."""
         px, py = point.x, point.y
         return [
             pid for pid, (x0, y0, x1, y1) in self._bboxes.items()
@@ -36,6 +37,11 @@ class BoundingBoxIndex:
 
 
 class GridIndex(BoundingBoxIndex):
+    """
+    Равномерная сетка. Каждый полигон регистрируется во всех ячейках, которые
+    пересекает его AABB. Запрос по точке: O(1) попадание в ячейку + точная
+    проверка только тех полигонов, что в этой ячейке.
+    """
 
     def __init__(self, cell_size: float = 1.0):
         super().__init__()
@@ -56,27 +62,39 @@ class GridIndex(BoundingBoxIndex):
             self._grid.setdefault(cell, set()).add(polygon_id)
 
     def remove(self, polygon_id: str) -> None:
-        empty = [c for c, ids in self._grid.items() if ids.discard(polygon_id) or not ids]
-        for cell in empty:
-            del self._grid[cell]
+        bbox = self._bboxes.get(polygon_id)
+        if bbox is None:
+            return
+        for cell in self._bbox_cells(*bbox):
+            ids = self._grid.get(cell)
+            if ids is None:
+                continue
+            ids.discard(polygon_id)
+            if not ids:
+                del self._grid[cell]
         super().remove(polygon_id)
 
+    def update(self, polygon_id: str, polygon: Polygon) -> None:
+        self.remove(polygon_id)
+        self.add(polygon_id, polygon)
+
     def candidates(self, point: Point) -> list[str]:
-        """O(1): ячейка точки → кандидаты → AABB-фильтр."""
         cell = self._to_cell(point.x, point.y)
         px, py = point.x, point.y
-        return [
-            pid for pid in self._grid.get(cell, set())
-            if (lambda b: b[0] <= px <= b[2] and b[1] <= py <= b[3])(self._bboxes[pid])
-        ]
+        result = []
+        for pid in self._grid.get(cell, ()):
+            x0, y0, x1, y1 = self._bboxes[pid]
+            if x0 <= px <= x1 and y0 <= py <= y1:
+                result.append(pid)
+        return result
 
     def stats(self) -> dict:
         occupied = len(self._grid)
-        total    = sum(len(ids) for ids in self._grid.values())
+        total = sum(len(ids) for ids in self._grid.values())
         return {
-            "type":                   "GridIndex",
-            "cell_size":              self._cell_size,
-            "polygon_count":          self.size(),
-            "occupied_cells":         occupied,
-            "avg_polygons_per_cell":  round(total / occupied, 2) if occupied else 0,
+            "type": "GridIndex",
+            "cell_size": self._cell_size,
+            "polygon_count": self.size(),
+            "occupied_cells": occupied,
+            "avg_polygons_per_cell": round(total / occupied, 2) if occupied else 0,
         }

@@ -3,553 +3,975 @@
 <head>
   <meta charset="UTF-8">
   <title>Polygon Service</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #15151c;
+      --surface-2: #1c1c25;
+      --border: #26262f;
+      --border-strong: #353541;
+      --text: #ededf0;
+      --text-muted: #8b8b95;
+      --text-faint: #5a5a65;
+      --accent: #6366f1;
+      --accent-hover: #7c7ff4;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warn: #f59e0b;
+      --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+      --sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --radius: 8px;
+      --radius-sm: 5px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+      --shadow: 0 4px 12px rgba(0,0,0,.35);
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #0d1117; color: #c9d1d9;
-      padding: 2rem; line-height: 1.6;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.01em;
     }
-    header { border-bottom: 1px solid #21262d; padding-bottom: 1rem; margin-bottom: 2rem; }
-    h1 { font-size: 1.8rem; color: #58a6ff; }
-    h2 { color: #58a6ff; font-size: 1.1rem; margin: 2rem 0 .8rem; }
 
-    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    thead tr { background: #161b22; }
-    th { text-align: left; padding: .6rem 1rem; color: #8b949e; font-weight: 600;
-         font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-    td { padding: .55rem 1rem; border-bottom: 1px solid #21262d; }
-    tbody tr:hover { background: #161b22; }
-    .method { display: inline-block; padding: .15rem .5rem; border-radius: 4px;
-              font-size: .78rem; font-weight: 700; font-family: monospace; }
-    .GET    { background: #1f6feb33; color: #79c0ff; border: 1px solid #1f6feb; }
-    .POST   { background: #3fb95033; color: #56d364; border: 1px solid #3fb950; }
-    .PUT    { background: #d2992233; color: #e3b341; border: 1px solid #d29922; }
-    .DELETE { background: #f8514933; color: #ff7b72; border: 1px solid #f85149; }
-    .url a  { color: #58a6ff; text-decoration: none; font-family: monospace; }
-    .url a:hover { text-decoration: underline; }
-    .url { font-family: monospace; }
-    .desc { color: #8b949e; font-size: .88rem; }
-
-    .playground { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: .5rem; }
-    .card-wide { grid-column: 1 / -1; }
-    @media (max-width: 900px) { .playground { grid-template-columns: 1fr; } }
-
-    .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 1.2rem; }
-    .card h3 { font-size: .82rem; color: #8b949e; font-weight: 600;
-               text-transform: uppercase; letter-spacing: .06em; margin-bottom: 1rem;
-               display: flex; align-items: center; gap: .5rem; }
-
-    label { display: block; font-size: .82rem; color: #8b949e; margin-bottom: .3rem; margin-top: .7rem; }
-    input, select {
-      width: 100%; background: #0d1117; border: 1px solid #30363d;
-      border-radius: 5px; color: #c9d1d9; font-size: .85rem;
-      padding: .45rem .7rem; font-family: 'Cascadia Code', 'Fira Code', monospace;
-      outline: none; transition: border-color .15s;
+    header {
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-shrink: 0;
+      background: var(--bg);
     }
-    input:focus, select:focus { border-color: #58a6ff; }
-    .hint { font-size: .75rem; color: #484f58; margin-top: .25rem; }
-    .row { display: flex; gap: .5rem; }
-    .row input { flex: 1; }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 15px;
+    }
+    .brand .dot {
+      width: 8px; height: 8px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .meta {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      display: flex; gap: 14px;
+    }
+    .meta b { color: var(--text); font-weight: 500; }
+    .links {
+      margin-left: auto;
+      display: flex;
+      gap: 4px;
+    }
+    .links a {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      text-decoration: none;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      font-family: var(--mono);
+      transition: all .15s ease;
+    }
+    .links a:hover {
+      color: var(--text);
+      background: var(--surface);
+    }
 
-    button {
-      margin-top: .9rem; width: 100%; padding: .5rem;
-      background: #1f6feb; color: #fff; border: none;
-      border-radius: 5px; font-size: .88rem; font-weight: 600;
-      cursor: pointer; transition: background .15s;
+    .layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      min-height: 0;
     }
-    button:hover  { background: #388bfd; }
-    button.danger { background: #b91c1c; }
-    button.danger:hover { background: #dc2626; }
-    button.warn   { background: #92400e; }
-    button.warn:hover   { background: #b45309; }
-    button.mt-sm  { margin-top: .4rem; }
-    button.ghost  { background: transparent; color: #484f58; border: 1px solid #30363d; font-size: .78rem; font-weight: 500; }
-    button.ghost:hover { color: #6e7681; border-color: #3d444d; background: #161b22; }
+    #map { background: #1a1a20; }
+    .leaflet-container { background: #1a1a20; font-family: var(--sans); }
 
-    /* canvas */
-    .canvas-outer { margin-top: .8rem; display: flex; gap: 0; }
-    .y-axis {
-      display: flex; flex-direction: column; justify-content: space-between;
-      padding: 4px 4px 4px 0; width: 36px; flex-shrink: 0;
-      font-size: .78rem; color: #6e7681; font-family: monospace; text-align: right;
+    aside {
+      border-left: 1px solid var(--border);
+      background: var(--bg);
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
     }
-    .canvas-inner { flex: 1; display: flex; flex-direction: column; }
-    .canvas-wrap {
-      background: #0d1117; border: 1px solid #30363d;
-      border-radius: 6px; overflow: hidden; position: relative; cursor: crosshair;
-    }
-    .canvas-wrap canvas { display: block; width: 100%; height: 380px; }
-    .canvas-hint {
-      position: absolute; bottom: .4rem; left: 50%; transform: translateX(-50%);
-      font-size: .68rem; color: #484f58; pointer-events: none; white-space: nowrap;
-    }
-    .x-axis {
-      display: flex; justify-content: space-between;
-      padding: 2px 0 0 0;
-      font-size: .78rem; color: #6e7681; font-family: monospace;
-    }
-    .x-label { text-align: center; }
 
-    .canvas-btns { display: flex; gap: .5rem; margin-top: .5rem; }
-    .canvas-btns button { margin-top: 0; flex: 1; padding: .35rem; font-size: .78rem; }
+    aside::-webkit-scrollbar { width: 8px; }
+    aside::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    aside::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
-    .id-banner {
-      margin-top: .8rem; background: #0d1117;
-      border: 1px solid #3fb950; border-radius: 6px;
-      padding: .6rem .9rem; display: none; align-items: center; gap: .6rem;
+    .mode-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 4px;
+      gap: 3px;
     }
-    .id-banner.show { display: flex; }
-    .id-banner-label { font-size: .75rem; color: #3fb950; white-space: nowrap; }
-    .id-banner-value { font-family: 'Cascadia Code','Fira Code',monospace; font-size: .78rem; color: #c9d1d9;
-                       flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .id-copy { font-size: .72rem; color: #58a6ff; cursor: pointer; white-space: nowrap;
-               border: none; background: none; padding: 0; margin: 0; width: auto; font-weight: 600; }
-    .id-copy:hover { color: #79c0ff; }
+    .mode-tabs button {
+      padding: 8px 6px;
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s ease;
+    }
+    .mode-tabs button.active {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: var(--shadow-sm);
+    }
+    .mode-tabs button:hover:not(.active) { color: var(--text); }
 
-    .pip-result { margin-top: .8rem; border-radius: 6px; padding: .7rem 1rem; display: none; align-items: flex-start; gap: .8rem; }
-    .pip-result.show { display: flex; }
-    .pip-result.hit  { background: #1a2e1a; border: 1px solid #3fb950; }
-    .pip-result.miss { background: #2e1a1a; border: 1px solid #f85149; }
-    .pip-text { flex: 1; }
-    .pip-text b { display: block; font-size: .9rem; }
-    .pip-result.hit  .pip-text b { color: #3fb950; }
-    .pip-result.miss .pip-text b { color: #f85149; }
-    .pip-names { font-size: .78rem; color: #8b949e; margin-top: .2rem; font-family: monospace; white-space: pre; }
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .section h3 {
+      font-size: 11px;
+      color: var(--text-faint);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      margin-top: 12px;
+      font-weight: 500;
+    }
+    label.first { margin-top: 0; }
+
+    input, select, textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13.5px;
+      padding: 9px 12px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .15s ease, box-shadow .15s ease;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+
+    textarea {
+      font-family: var(--mono);
+      font-size: 12px;
+      resize: vertical;
+      min-height: 72px;
+      line-height: 1.5;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 10px 14px;
+      margin-top: 14px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s ease;
+      color: #fff;
+      letter-spacing: -0.01em;
+    }
+    .btn-primary { background: var(--accent); }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover { background: #f87171; }
+    .btn-warn { background: var(--warn); color: #422006; }
+    .btn-warn:hover { background: #fbbf24; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-muted);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover {
+      color: var(--text);
+      background: var(--surface-2);
+      border-color: var(--border-strong);
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; margin-top: 0; }
+
+    .hint {
+      font-size: 11.5px;
+      color: var(--text-faint);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
+    .status-pill {
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      line-height: 1.5;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+    .status-pill.active {
+      background: rgba(99, 102, 241, .08);
+      border-color: rgba(99, 102, 241, .35);
+      color: #a5a8f6;
+    }
+
+    .format-tabs {
+      display: flex;
+      gap: 3px;
+      background: var(--bg);
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-top: 12px;
+    }
+    .format-tabs button {
+      flex: 1;
+      padding: 6px 8px;
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--mono);
+      margin: 0;
+      transition: all .15s ease;
+    }
+    .format-tabs button.active {
+      background: var(--surface-2);
+      color: var(--text);
+    }
+
+    .poly-list {
+      max-height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .poly-list::-webkit-scrollbar { width: 6px; }
+    .poly-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .poly-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .poly-item:hover {
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+    }
+    .poly-item .swatch {
+      width: 10px; height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .poly-item .name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .poly-item .meta-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-faint);
+    }
+    .poly-item .x {
+      color: var(--text-faint);
+      font-size: 18px;
+      padding: 0 4px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: auto;
+      margin: 0;
+      line-height: 1;
+      transition: color .15s ease;
+    }
+    .poly-item .x:hover { color: var(--danger); }
+
+    .empty {
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--text-faint);
+      font-size: 13px;
+    }
+
+    .result-card {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      display: none;
+      border-left: 3px solid;
+    }
+    .result-card.show { display: block; }
+    .result-card.hit {
+      background: rgba(16, 185, 129, .08);
+      border-color: var(--success);
+      color: #34d399;
+    }
+    .result-card.miss {
+      background: rgba(239, 68, 68, .08);
+      border-color: var(--danger);
+      color: #f87171;
+    }
+    .result-card .verdict { font-weight: 600; font-size: 13.5px; }
+    .result-card .matched {
+      color: var(--text);
+      font-size: 12px;
+      margin-top: 6px;
+      font-family: var(--mono);
+      line-height: 1.6;
+    }
 
     .json-toggle {
-      margin-top: .5rem; width: 100%; padding: .35rem;
-      background: transparent; color: #484f58; border: 1px solid #30363d;
-      border-radius: 5px; font-size: .78rem; font-weight: 500; cursor: pointer;
-      transition: color .15s, border-color .15s;
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px;
+      background: transparent;
+      color: var(--text-faint);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all .15s ease;
     }
-    .json-toggle:hover { color: #6e7681; border-color: #3d444d; background: #161b22; }
-    .response {
-      margin-top: .5rem; background: #0d1117; border: 1px solid #21262d;
-      border-radius: 5px; padding: .7rem .9rem;
-      font-family: 'Cascadia Code','Fira Code',monospace;
-      font-size: .78rem; white-space: pre-wrap; word-break: break-all;
-      max-height: 220px; overflow-y: auto; color: #e6edf3; display: none;
+    .json-toggle:hover {
+      color: var(--text-muted);
+      border-color: var(--border-strong);
     }
-    .response.ok    { border-color: #3fb950; }
-    .response.error { border-color: #f85149; color: #ff7b72; }
-    .response.show  { display: block; }
+    .json-view {
+      margin-top: 8px;
+      background: #050507;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 220px;
+      overflow-y: auto;
+      display: none;
+      line-height: 1.5;
+    }
+    .json-view.show { display: block; }
 
-    .card-wide-inner { display: grid; grid-template-columns: 1fr 340px; gap: 1.5rem; align-items: start; }
-    .canvas-col { }
-    .props-col { }
-    @media (max-width: 900px) { .card-wide-inner { grid-template-columns: 1fr; } }
-    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #21262d; font-size: .82rem; color: #484f58; }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-row .k { color: var(--text-muted); }
+    .stat-row .v {
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      font-weight: 500;
+    }
+
+    .leaflet-popup-content-wrapper {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .leaflet-popup-tip { background: var(--surface); border: 1px solid var(--border-strong); }
+    .leaflet-popup-content {
+      font-size: 13px;
+      margin: 14px 16px;
+      font-family: var(--sans);
+      line-height: 1.5;
+    }
+    .leaflet-popup-content .pop-name { font-weight: 600; color: var(--text); font-size: 14px; }
+    .leaflet-popup-content .pop-id {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-faint);
+      margin-top: 2px;
+    }
+    .leaflet-popup-content .pop-props {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: var(--bg);
+      border-radius: 4px;
+    }
+    .leaflet-popup-content .pop-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .leaflet-popup-content .pop-actions button {
+      flex: 1;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 4px;
+      border: 1px solid var(--border-strong);
+      cursor: pointer;
+      background: var(--surface-2);
+      color: var(--text);
+      font-family: inherit;
+      transition: all .15s ease;
+    }
+    .leaflet-popup-content .pop-actions button:hover { background: var(--border-strong); }
+    .leaflet-popup-content .pop-actions button.danger {
+      background: rgba(239, 68, 68, .12);
+      color: #f87171;
+      border-color: rgba(239, 68, 68, .35);
+    }
+    .leaflet-popup-content .pop-actions button.danger:hover {
+      background: rgba(239, 68, 68, .2);
+    }
+    .leaflet-popup-close-button { color: var(--text-faint) !important; }
+    .leaflet-popup-close-button:hover { color: var(--text) !important; }
+
+    .leaflet-control-zoom a {
+      background: var(--surface) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--border) !important;
+    }
+    .leaflet-control-zoom a:hover { background: var(--surface-2) !important; }
+    .leaflet-control-attribution {
+      background: rgba(10, 10, 15, .85) !important;
+      color: var(--text-muted) !important;
+      font-size: 10px !important;
+    }
+    .leaflet-control-attribution a { color: var(--text-muted) !important; }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      cursor: pointer;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+    .checkbox-row input { width: auto; }
   </style>
 </head>
 <body>
 
-<header><h1>Polygon Service</h1></header>
+<header>
+  <div class="brand">
+    <span class="dot"></span>
+    <span>Polygon Service</span>
+  </div>
+  <div class="meta">
+    <span><b id="poly-count">{polygon_count}</b> полигонов</span>
+    <span>Python <b>{python_version}</b></span>
+  </div>
+  <div class="links">
+    <a href="/health" target="_blank">/health</a>
+    <a href="/stats" target="_blank">/stats</a>
+    <a href="/polygons" target="_blank">/polygons</a>
+  </div>
+</header>
 
-<h2>API эндпоинты</h2>
-<table>
-  <thead><tr><th>Метод</th><th>URL</th><th>Описание</th></tr></thead>
-  <tbody>
-    <tr><td><span class="method GET">GET</span></td><td class="url"><a href="/health">/health</a></td><td class="desc">Статус сервиса</td></tr>
-    <tr><td><span class="method GET">GET</span></td><td class="url"><a href="/stats">/stats</a></td><td class="desc">Статистика индекса</td></tr>
-    <tr><td><span class="method GET">GET</span></td><td class="url"><a href="/polygons">/polygons</a></td><td class="desc">Список всех полигонов</td></tr>
-    <tr><td><span class="method POST">POST</span></td><td class="url">/polygons</td><td class="desc">Создать полигон</td></tr>
-    <tr><td><span class="method GET">GET</span></td><td class="url">/polygons/{id}</td><td class="desc">Получить полигон по ID</td></tr>
-    <tr><td><span class="method PUT">PUT</span></td><td class="url">/polygons/{id}</td><td class="desc">Обновить полигон</td></tr>
-    <tr><td><span class="method DELETE">DELETE</span></td><td class="url">/polygons/{id}</td><td class="desc">Удалить полигон</td></tr>
-    <tr><td><span class="method POST">POST</span></td><td class="url">/query/point-in-polygon</td><td class="desc">Найти полигоны по точке</td></tr>
-  </tbody>
-</table>
+<div class="layout">
+  <div id="map"></div>
 
-<h2>Playground</h2>
-<div class="playground">
+  <aside>
+    <div class="mode-tabs">
+      <button id="tab-draw" class="active" onclick="setMode('draw')">Рисовать</button>
+      <button id="tab-query" onclick="setMode('query')">Точка</button>
+      <button id="tab-edit" onclick="setMode('edit')">Список</button>
+    </div>
 
-  <!-- Создать полигон -->
-  <div class="card card-wide">
-    <h3><span class="method POST">POST</span> Создать полигон</h3>
+    <div id="panel-draw" class="section">
+      <h3>Новый полигон</h3>
+      <div class="status-pill active" id="draw-status">Кликни по карте, чтобы поставить первую вершину</div>
 
-    <label>Название</label>
-    <input id="create-name" type="text" placeholder="Зона А">
-
-
-    <div class="card-wide-inner">
-    <div class="canvas-col">
-    <div class="canvas-outer">
-      <!-- Ось Y -->
-      <div class="y-axis" id="y-axis">
-        <span>100</span><span>75</span><span>50</span><span>25</span><span>0</span>
+      <div class="format-tabs">
+        <button class="active" onclick="setInputFormat('map', this)">map</button>
+        <button onclick="setInputFormat('wkt', this)">wkt</button>
+        <button onclick="setInputFormat('geojson', this)">geojson</button>
       </div>
-      <div class="canvas-inner">
-        <div class="canvas-wrap" id="canvas-wrap">
-          <canvas id="draw-canvas"></canvas>
-          <span class="canvas-hint">клик — добавить точку · двойной клик — замкнуть</span>
+
+      <div id="input-map">
+        <label>Вершины (lng, lat)</label>
+        <textarea id="vertices-text" readonly placeholder="вершин ещё нет"></textarea>
+        <div class="row" style="margin-top: 8px;">
+          <button class="btn btn-ghost" style="margin: 0;" onclick="undoVertex()">Отменить точку</button>
+          <button class="btn btn-ghost" style="margin: 0;" onclick="clearDraft()">Очистить</button>
         </div>
-        <!-- Ось X -->
-        <div class="x-axis">
-          <span>0</span><span>25</span><span>50</span><span>75</span><span>100</span>
-        </div>
-        <div style="text-align:center; font-size:.78rem; color:#6e7681; font-family:monospace; margin-top:2px;">X →</div>
       </div>
-    </div>
-    <!-- метка оси Y -->
-    <div style="font-size:.78rem; color:#6e7681; font-family:monospace; text-align:left; margin-top:2px; padding-left:36px;">↑ Y</div>
 
-    </div><!-- end canvas-col -->
-    <div class="props-col">
-    <label>Координаты точек (x,y — одна на строку)</label>
-    <textarea id="canvas-coords" rows="3" oninput="coordsEdited()" placeholder="нет точек"
-      style="width:100%; background:#0d1117; border:1px solid #21262d; border-radius:5px;
-             padding:.5rem .7rem; font-family:'Cascadia Code','Fira Code',monospace;
-             font-size:.75rem; color:#8b949e; resize:vertical; outline:none; margin-top:.3rem;"></textarea>
-
-    <div class="canvas-btns">
-      <button class="ghost" onclick="undoPoint()">← отменить точку</button>
-      <button class="ghost" onclick="clearCanvas()">очистить</button>
-    </div>
-
-    <label>Properties (JSON, опционально)</label>
-    <input id="create-props" type="text" placeholder='{"region": "Moscow"}'>
-
-    <button onclick="createPolygon()">Создать</button>
-    </div><!-- end props-col -->
-    </div><!-- end card-wide-inner -->
-
-    <div class="id-banner" id="create-id-banner">
-      <span class="id-banner-label">ID →</span>
-      <span class="id-banner-value" id="create-id-value"></span>
-      <button class="id-copy" onclick="copyId()">копировать</button>
-    </div>
-    <button class="json-toggle" id="create-json-btn" onclick="toggleJson('create-resp','create-json-btn')" style="display:none">показать JSON ▾</button>
-    <div class="response" id="create-resp"></div>
-  </div>
-
-  <!-- Точка в полигоне -->
-  <div class="card">
-    <h3><span class="method POST">POST</span> Точка в полигоне</h3>
-
-    <label>Координаты точки</label>
-    <div class="row" style="align-items:center; gap:.5rem;">
-      <div style="flex:1;">
-        <div style="font-size:.72rem; color:#484f58; margin-bottom:.2rem;">X</div>
-        <input id="pip-x" type="number" placeholder="0–100" value="50">
+      <div id="input-wkt" style="display: none;">
+        <label class="first">WKT</label>
+        <textarea id="wkt-input" placeholder="POLYGON ((37.6 55.7, 37.7 55.7, 37.7 55.8, 37.6 55.8, 37.6 55.7))"></textarea>
+        <div class="hint">Порядок координат — lng lat. Несколько колец через запятую: POLYGON ((внешнее), (отверстие))</div>
       </div>
-      <div style="flex:1;">
-        <div style="font-size:.72rem; color:#484f58; margin-bottom:.2rem;">Y</div>
-        <input id="pip-y" type="number" placeholder="0–100" value="50">
+
+      <div id="input-geojson" style="display: none;">
+        <label class="first">GeoJSON</label>
+        <textarea id="geojson-input" placeholder='{"type":"Polygon","coordinates":[[[37.6,55.7],[37.7,55.7],[37.7,55.8],[37.6,55.8],[37.6,55.7]]]}'></textarea>
       </div>
+
+      <label>Название</label>
+      <input id="poly-name" type="text" placeholder="Зона А">
+
+      <label>Properties (JSON)</label>
+      <input id="poly-props" type="text" placeholder='{"region": "Moscow"}'>
+
+      <button class="btn btn-primary" onclick="submitPolygon()">Создать полигон</button>
     </div>
 
-    <label>Алгоритм</label>
-    <select id="pip-algo">
-      <option value="ray_casting">ray_casting</option>
-      <option value="winding_number">winding_number</option>
-    </select>
+    <div id="panel-query" class="section" style="display: none;">
+      <h3>Проверка точки</h3>
+      <div class="status-pill active" id="query-status">Кликни по карте или введи координаты вручную</div>
 
-    <label style="display:flex; align-items:center; gap:.5rem; margin-top:.7rem; cursor:pointer;">
-      <input id="pip-boundary" type="checkbox" checked style="width:auto">
-      Считать точку на границе попаданием
-    </label>
-
-    <button onclick="checkPoint()">Проверить</button>
-
-    <div class="pip-result" id="pip-result">
-      <div class="pip-text">
-        <b id="pip-verdict"></b>
-        <div class="pip-names" id="pip-names"></div>
+      <label>Координаты</label>
+      <div class="row">
+        <input id="pip-lng" type="number" step="any" placeholder="longitude">
+        <input id="pip-lat" type="number" step="any" placeholder="latitude">
       </div>
+
+      <label>Алгоритм</label>
+      <select id="pip-algo">
+        <option value="ray_casting">ray_casting</option>
+        <option value="winding_number">winding_number</option>
+      </select>
+
+      <label class="checkbox-row">
+        <input id="pip-boundary" type="checkbox" checked>
+        Считать границу попаданием
+      </label>
+
+      <button class="btn btn-primary" onclick="runPip()">Проверить</button>
+
+      <div id="pip-result" class="result-card">
+        <div class="verdict" id="pip-verdict"></div>
+        <div class="matched" id="pip-matched"></div>
+      </div>
+      <button class="json-toggle" onclick="toggleJson('pip-json', this)">показать ответ сервера</button>
+      <div class="json-view" id="pip-json"></div>
     </div>
-    <button class="json-toggle" id="pip-json-btn" onclick="toggleJson('pip-resp','pip-json-btn')" style="display:none">показать JSON ▾</button>
-    <div class="response" id="pip-resp"></div>
-  </div>
 
-  <!-- Получить / удалить -->
-  <div class="card">
-    <h3>Получить или удалить полигон</h3>
-    <label>ID полигона</label>
-    <input id="byid-id" type="text" placeholder="вставь id из баннера выше">
-    <button onclick="getPolygon()">Получить (GET)</button>
-    <button class="danger mt-sm" onclick="deletePolygon()">Удалить (DELETE)</button>
-    <div class="response" id="byid-resp"></div>
-  </div>
+    <div id="panel-edit" class="section" style="display: none;">
+      <h3>Полигоны</h3>
+      <div class="poly-list" id="poly-list"></div>
+      <button class="btn btn-ghost" onclick="reloadPolygons()">Обновить список</button>
+    </div>
 
-  <!-- Обновить -->
-  <div class="card">
-    <h3><span class="method PUT">PUT</span> Обновить полигон</h3>
-    <label>ID полигона</label>
-    <input id="upd-id" type="text" placeholder="вставь id из баннера выше">
-    <label>Новое название (опционально)</label>
-    <input id="upd-name" type="text" placeholder="оставь пустым, чтобы не менять">
-    <button class="warn" onclick="updatePolygon()">Обновить</button>
-    <div class="response" id="upd-resp"></div>
-  </div>
-
+    <div class="section">
+      <h3>Пространственный индекс</h3>
+      <div class="stat-row"><span class="k">Тип</span><span class="v" id="stat-type">—</span></div>
+      <div class="stat-row"><span class="k">Полигонов</span><span class="v" id="stat-count">—</span></div>
+      <div class="stat-row"><span class="k">Занятых ячеек</span><span class="v" id="stat-cells">—</span></div>
+      <div class="stat-row"><span class="k">Размер ячейки</span><span class="v" id="stat-size">—</span></div>
+    </div>
+  </aside>
 </div>
 
-
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const canvas = document.getElementById('draw-canvas');
-const ctx    = canvas.getContext('2d');
-let points   = [];
-let closed   = false;
+const PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
+const map = L.map('map', { zoomControl: true, doubleClickZoom: false }).setView([55.7558, 37.6173], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap',
+  maxZoom: 19,
+}).addTo(map);
 
-const PAD = 8;
+let mode = 'draw';
+let inputFormat = 'map';
+let draftVertices = [];
+let draftLayer = null;
+let firstVertexMarker = null;
+const polyLayers = {};
+const polyById = {};
+let queryMarker = null;
+let queryHighlight = null;
 
-function resizeCanvas() {
-  const wrap = document.getElementById('canvas-wrap');
-  canvas.width  = wrap.clientWidth;
-  canvas.height = 380;
-  redraw();
-}
-window.addEventListener('load',   resizeCanvas);
-window.addEventListener('resize', resizeCanvas);
-
-function toCanvas(lx, ly) {
-  const W = canvas.width  - PAD * 2;
-  const H = canvas.height - PAD * 2;
-  return {
-    cx: PAD + (lx / 100) * W,
-    cy: PAD + ((100 - ly) / 100) * H 
-  };
+function colorFor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
 }
 
-function fromCanvas(cx, cy) {
-  const W = canvas.width  - PAD * 2;
-  const H = canvas.height - PAD * 2;
-  return {
-    x: Math.round(((cx - PAD) / W) * 100),
-    y: Math.round(((PAD + H - cy) / H) * 100)
-  };
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-canvas.addEventListener('click', e => {
-  if (closed) return;
-  const r   = canvas.getBoundingClientRect();
-  const cx  = (e.clientX - r.left) * (canvas.width  / r.width);
-  const cy  = (e.clientY - r.top)  * (canvas.height / r.height);
-  const log = fromCanvas(cx, cy);
-
-  // клик на первую точку = замкнуть
-  if (points.length >= 3) {
-    const first = toCanvas(points[0].x, points[0].y);
-    if (Math.hypot(cx - first.cx, cy - first.cy) < 14) {
-      closed = true; redraw(); syncTextarea(); return;
-    }
+function setMode(m) {
+  mode = m;
+  for (const id of ['draw', 'query', 'edit']) {
+    document.getElementById('tab-' + id).classList.toggle('active', m === id);
+    document.getElementById('panel-' + id).style.display = m === id ? 'block' : 'none';
   }
+  if (m !== 'draw') clearDraft();
+  map.closePopup();
+}
 
-  points.push(log);
-  redraw();
-  syncTextarea();
+function setInputFormat(f, btn) {
+  inputFormat = f;
+  document.querySelectorAll('.format-tabs button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('input-map').style.display = f === 'map' ? 'block' : 'none';
+  document.getElementById('input-wkt').style.display = f === 'wkt' ? 'block' : 'none';
+  document.getElementById('input-geojson').style.display = f === 'geojson' ? 'block' : 'none';
+}
+
+map.on('click', e => {
+  if (mode === 'draw' && inputFormat === 'map') {
+    addVertex(e.latlng);
+  } else if (mode === 'query') {
+    queryAt(e.latlng);
+  }
 });
 
-canvas.addEventListener('dblclick', e => {
-  if (points.length >= 3) { closed = true; redraw(); syncTextarea(); }
+map.on('dblclick', e => {
+  if (mode === 'draw' && inputFormat === 'map' && draftVertices.length >= 3) {
+    L.DomEvent.preventDefault(e);
+    submitPolygon();
+  }
 });
 
-function undoPoint() {
-  if (closed) { closed = false; } else { points.pop(); }
-  redraw(); syncTextarea();
-}
-
-function clearCanvas() {
-  points = []; closed = false; redraw(); syncTextarea();
-}
-
-function redraw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // сетка
-  ctx.strokeStyle = '#1a1f27';
-  ctx.lineWidth   = 1;
-  [25, 50, 75].forEach(v => {
-    // вертикальные линии
-    const {cx} = toCanvas(v, 0);
-    ctx.beginPath(); ctx.moveTo(cx, PAD); ctx.lineTo(cx, canvas.height - PAD); ctx.stroke();
-    // горизонтальные линии
-    const {cy} = toCanvas(0, v);
-    ctx.beginPath(); ctx.moveTo(PAD, cy); ctx.lineTo(canvas.width - PAD, cy); ctx.stroke();
-  });
-
-  if (points.length === 0) {
-    ctx.fillStyle = '#484f58'; ctx.font = '13px system-ui'; ctx.textAlign = 'center';
-    ctx.fillText('кликни чтобы добавить первую точку', canvas.width / 2, canvas.height / 2);
-    return;
-  }
-
-  const canvasPoints = points.map(p => toCanvas(p.x, p.y));
-
-  // заливка
-  if (closed && points.length >= 3) {
-    ctx.beginPath();
-    ctx.moveTo(canvasPoints[0].cx, canvasPoints[0].cy);
-    canvasPoints.slice(1).forEach(p => ctx.lineTo(p.cx, p.cy));
-    ctx.closePath();
-    ctx.fillStyle = '#1f6feb22'; ctx.fill();
-  }
-
-  // рёбра
-  ctx.beginPath();
-  ctx.moveTo(canvasPoints[0].cx, canvasPoints[0].cy);
-  canvasPoints.slice(1).forEach(p => ctx.lineTo(p.cx, p.cy));
-  if (closed) ctx.closePath();
-  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5; ctx.stroke();
-
-  // зона замыкания
-  if (!closed && points.length >= 3) {
-    ctx.beginPath();
-    ctx.arc(canvasPoints[0].cx, canvasPoints[0].cy, 10, 0, Math.PI * 2);
-    ctx.strokeStyle = '#3fb95055'; ctx.lineWidth = 1; ctx.stroke();
-  }
-
-  // точки и подписи (берём прямо из points[] — логические координаты)
-  canvasPoints.forEach((cp, i) => {
-    ctx.beginPath();
-    ctx.arc(cp.cx, cp.cy, i === 0 ? 5 : 4, 0, Math.PI * 2);
-    ctx.fillStyle = i === 0 ? '#3fb950' : '#58a6ff'; ctx.fill();
-
-    ctx.fillStyle = '#c9d1d9'; ctx.font = '13px monospace'; ctx.textAlign = 'center';
-    ctx.fillText(`${points[i].x},${points[i].y}`, cp.cx, cp.cy - 11);
-  });
-}
-
-function syncTextarea() {
-  const el = document.getElementById('canvas-coords');
-  el.value = points.length ? points.map(p => `${p.x},${p.y}`).join('\n') : '';
-}
-
-function coordsEdited() {
-  const raw = document.getElementById('canvas-coords').value;
-  const lines = raw.trim().split('\n').map(l => l.trim()).filter(Boolean);
-  const newPts = [];
-  for (const line of lines) {
-    const parts = line.split(',').map(s => parseFloat(s.trim()));
-    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      newPts.push({ x: Math.round(parts[0]), y: Math.round(parts[1]) });
+function addVertex(latlng) {
+  if (draftVertices.length >= 3) {
+    const first = draftVertices[0];
+    const pxDist = map.latLngToContainerPoint(first).distanceTo(map.latLngToContainerPoint(latlng));
+    if (pxDist < 14) {
+      submitPolygon();
+      return;
     }
   }
-  points = newPts;
-  closed = newPts.length >= 3;
-  redraw();
+  draftVertices.push(latlng);
+  redrawDraft();
 }
 
-function toGeoJsonCoords(pts) {
-  const arr = pts.map(p => [p.x, p.y]);
-  return [[...arr, arr[0]]];
+function undoVertex() {
+  draftVertices.pop();
+  redrawDraft();
 }
 
-// ── Утилиты ───────────────────────────────────────────────────────────────
-async function req(method, url, body) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
-  if (body !== undefined) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
-  return { ok: r.ok, data: await r.json() };
+function clearDraft() {
+  draftVertices = [];
+  redrawDraft();
 }
 
-function showResp(id, data, ok) {
-  const el = document.getElementById(id);
-  el.textContent = JSON.stringify(data, null, 2);
-  el.className   = 'response show ' + (ok ? 'ok' : 'error');
-}
+function redrawDraft() {
+  if (draftLayer) { map.removeLayer(draftLayer); draftLayer = null; }
+  if (firstVertexMarker) { map.removeLayer(firstVertexMarker); firstVertexMarker = null; }
 
-function toggleJson(respId, btnId) {
-  const el  = document.getElementById(respId);
-  const btn = document.getElementById(btnId);
-  const vis = el.classList.contains('show');
-  el.classList.toggle('show', !vis);
-  btn.textContent = vis ? 'показать JSON ▾' : 'скрыть JSON ▴';
-}
-
-function copyId() {
-  navigator.clipboard.writeText(document.getElementById('create-id-value').textContent).catch(()=>{});
-  const btn = document.querySelector('.id-copy');
-  btn.textContent = 'скопировано!';
-  setTimeout(() => { btn.textContent = 'копировать'; }, 1500);
-}
-
-async function createPolygon() {
-  const name  = document.getElementById('create-name').value.trim();
-  const props = document.getElementById('create-props').value.trim();
-  if (!name) return showResp('create-resp', { error: 'Введите название' }, false);
-  if (points.length < 3) return showResp('create-resp', { error: 'Нужно минимум 3 точки' }, false);
-  let properties = {};
-  if (props) { try { properties = JSON.parse(props); } catch { return showResp('create-resp', { error: 'Ошибка парсинга properties' }, false); } }
-
-  const { ok, data } = await req('POST', '/polygons', {
-    name, geometry: { type: 'Polygon', coordinates: toGeoJsonCoords(points) }, properties
-  });
-
-  const respEl = document.getElementById('create-resp');
-  respEl.textContent = JSON.stringify(data, null, 2);
-  respEl.className   = 'response ' + (ok ? 'ok' : 'error');
-
-  if (ok && data.id) {
-    document.getElementById('create-id-value').textContent = data.id;
-    document.getElementById('create-id-banner').className  = 'id-banner show';
+  const status = document.getElementById('draw-status');
+  if (draftVertices.length === 0) {
+    status.textContent = 'Кликни по карте, чтобы поставить первую вершину';
+    status.classList.add('active');
+  } else if (draftVertices.length < 3) {
+    status.textContent = `Точек: ${draftVertices.length} · нужно минимум 3`;
+    status.classList.add('active');
   } else {
-    document.getElementById('create-id-banner').className = 'id-banner';
+    status.textContent = `Точек: ${draftVertices.length} · двойной клик или клик на первую вершину — замкнуть`;
+    status.classList.add('active');
   }
-  const btn = document.getElementById('create-json-btn');
-  btn.style.display = 'block'; btn.textContent = 'показать JSON ▾';
-}
 
-async function checkPoint() {
-  const x   = parseFloat(document.getElementById('pip-x').value);
-  const y   = parseFloat(document.getElementById('pip-y').value);
-  const algo = document.getElementById('pip-algo').value;
-  const inc  = document.getElementById('pip-boundary').checked;
-  if (isNaN(x) || isNaN(y)) return;
-
-  const { ok, data } = await req('POST', '/query/point-in-polygon',
-    { point: [x, y], algorithm: algo, include_boundary: inc });
-
-  const respEl = document.getElementById('pip-resp');
-  respEl.textContent = JSON.stringify(data, null, 2);
-  respEl.className   = 'response ' + (ok ? 'ok' : 'error');
-  const btn = document.getElementById('pip-json-btn');
-  btn.style.display = 'block'; btn.textContent = 'показать JSON ▾';
-
-  const resultEl  = document.getElementById('pip-result');
-  const verdictEl = document.getElementById('pip-verdict');
-  const namesEl   = document.getElementById('pip-names');
-
-  if (!ok) {
-    resultEl.className    = 'pip-result show miss';
-    verdictEl.textContent = data.error || 'Ошибка запроса';
-    namesEl.textContent   = ''; return;
+  if (draftVertices.length >= 1) {
+    firstVertexMarker = L.circleMarker(draftVertices[0], {
+      radius: 6, color: '#10b981', fillColor: '#10b981', fillOpacity: 1, weight: 2,
+    }).addTo(map);
   }
-  const hit = data.matching_count > 0;
-  resultEl.className    = `pip-result show ${hit ? 'hit' : 'miss'}`;
-  verdictEl.textContent = hit
-    ? `Точка (${x}, ${y}) попала в ${data.matching_count} полигон${data.matching_count > 1 ? 'а' : ''}`
-    : `Точка (${x}, ${y}) не попала ни в один полигон`;
-  namesEl.textContent = hit
-    ? data.matching_polygons.map(p => `· ${p.name}  [${p.id.slice(0,8)}...]`).join('\n')
+  if (draftVertices.length >= 2) {
+    draftLayer = L.polyline(draftVertices, { color: '#6366f1', weight: 2, dashArray: '4,4' }).addTo(map);
+  }
+  document.getElementById('vertices-text').value = draftVertices.length
+    ? draftVertices.map(v => `${v.lng.toFixed(6)}, ${v.lat.toFixed(6)}`).join('\n')
     : '';
 }
 
-async function getPolygon() {
-  const id = document.getElementById('byid-id').value.trim();
-  if (!id) return showResp('byid-resp', { error: 'Введите ID' }, false);
-  const { ok, data } = await req('GET', `/polygons/${id}`);
-  showResp('byid-resp', data, ok);
+function buildBody() {
+  const name = document.getElementById('poly-name').value.trim();
+  if (!name) throw new Error('Введите название');
+
+  const propsRaw = document.getElementById('poly-props').value.trim();
+  let properties = {};
+  if (propsRaw) {
+    try { properties = JSON.parse(propsRaw); }
+    catch { throw new Error('Невалидный JSON в properties'); }
+  }
+
+  const body = { name, properties };
+
+  if (inputFormat === 'map') {
+    if (draftVertices.length < 3) throw new Error('Нужно минимум 3 точки');
+    const coords = draftVertices.map(v => [v.lng, v.lat]);
+    coords.push(coords[0]);
+    body.geometry = { type: 'Polygon', coordinates: [coords] };
+  } else if (inputFormat === 'wkt') {
+    const wkt = document.getElementById('wkt-input').value.trim();
+    if (!wkt) throw new Error('Введите WKT');
+    body.wkt = wkt;
+  } else {
+    const raw = document.getElementById('geojson-input').value.trim();
+    if (!raw) throw new Error('Введите GeoJSON');
+    try { body.geometry = JSON.parse(raw); }
+    catch { throw new Error('Невалидный JSON'); }
+  }
+  return body;
 }
 
-async function deletePolygon() {
-  const id = document.getElementById('byid-id').value.trim();
-  if (!id) return showResp('byid-resp', { error: 'Введите ID' }, false);
-  const { ok, data } = await req('DELETE', `/polygons/${id}`);
-  showResp('byid-resp', data, ok);
+async function submitPolygon() {
+  let body;
+  try { body = buildBody(); }
+  catch (e) { alert(e.message); return; }
+
+  const r = await fetch('/polygons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) { alert(data.error || 'Ошибка'); return; }
+
+  clearDraft();
+  document.getElementById('poly-name').value = '';
+  document.getElementById('poly-props').value = '';
+  document.getElementById('wkt-input').value = '';
+  document.getElementById('geojson-input').value = '';
+
+  addPolygonLayer(data);
+  refreshList();
+  refreshStats();
 }
 
-async function updatePolygon() {
-  const id   = document.getElementById('upd-id').value.trim();
-  const name = document.getElementById('upd-name').value.trim();
-  if (!id) return showResp('upd-resp', { error: 'Введите ID' }, false);
-  const body = {};
-  if (name) body.name = name;
-  if (!Object.keys(body).length) return showResp('upd-resp', { error: 'Нечего обновлять' }, false);
-  const { ok, data } = await req('PUT', `/polygons/${id}`, body);
-  showResp('upd-resp', data, ok);
+function buildPopupHtml(record) {
+  const propsHtml = Object.keys(record.properties || {}).length
+    ? `<div class="pop-props">${escapeHtml(JSON.stringify(record.properties))}</div>` : '';
+  return (
+    `<div class="pop-name">${escapeHtml(record.name)}</div>` +
+    `<div class="pop-id">${record.id.slice(0, 8)}…</div>` +
+    propsHtml +
+    `<div class="pop-actions">` +
+    `  <button onclick="focusPolygon('${record.id}')">Приблизить</button>` +
+    `  <button class="danger" onclick="deletePolygon('${record.id}')">Удалить</button>` +
+    `</div>`
+  );
 }
+
+function addPolygonLayer(record) {
+  if (polyLayers[record.id]) {
+    map.removeLayer(polyLayers[record.id]);
+  }
+  polyById[record.id] = record;
+  const color = colorFor(record.id);
+  const layer = L.geoJSON(record.geometry, {
+    style: { color, weight: 2, fillColor: color, fillOpacity: 0.18 },
+    coordsToLatLng: c => L.latLng(c[1], c[0]),
+  });
+
+  layer.on('click', e => {
+    L.DomEvent.stopPropagation(e);
+    if (mode === 'query') {
+      queryAt(e.latlng);
+    } else if (mode === 'draw' && inputFormat === 'map') {
+      addVertex(e.latlng);
+    } else {
+      L.popup({ closeButton: true, autoClose: true })
+        .setLatLng(e.latlng)
+        .setContent(buildPopupHtml(polyById[record.id] || record))
+        .openOn(map);
+    }
+  });
+
+  layer.addTo(map);
+  polyLayers[record.id] = layer;
+  return layer;
+}
+
+function focusPolygon(id) {
+  const layer = polyLayers[id];
+  if (layer) {
+    map.closePopup();
+    map.fitBounds(layer.getBounds(), { padding: [40, 40] });
+  }
+}
+
+async function deletePolygon(id) {
+  if (!confirm('Удалить полигон?')) return;
+  const r = await fetch(`/polygons/${id}`, { method: 'DELETE' });
+  if (!r.ok) { alert('Не удалось удалить'); return; }
+  if (polyLayers[id]) { map.removeLayer(polyLayers[id]); delete polyLayers[id]; }
+  delete polyById[id];
+  map.closePopup();
+  refreshList();
+  refreshStats();
+}
+
+async function reloadPolygons() {
+  Object.values(polyLayers).forEach(l => map.removeLayer(l));
+  for (const k of Object.keys(polyLayers)) delete polyLayers[k];
+  for (const k of Object.keys(polyById)) delete polyById[k];
+
+  const r = await fetch('/polygons');
+  const data = await r.json();
+  if (data.polygons) data.polygons.forEach(p => addPolygonLayer(p));
+  refreshList();
+  refreshStats();
+}
+
+function refreshList() {
+  document.getElementById('poly-count').textContent = Object.keys(polyById).length;
+  const list = document.getElementById('poly-list');
+  const ids = Object.keys(polyById);
+  if (ids.length === 0) {
+    list.innerHTML = '<div class="empty">Полигонов пока нет</div>';
+    return;
+  }
+  list.innerHTML = '';
+  ids.forEach(id => {
+    const rec = polyById[id];
+    const el = document.createElement('div');
+    el.className = 'poly-item';
+    el.onclick = () => focusPolygon(id);
+    el.innerHTML = `
+      <span class="swatch" style="background: ${colorFor(id)};"></span>
+      <span class="name">${escapeHtml(rec.name)}</span>
+      <span class="meta-id">${id.slice(0, 6)}</span>
+      <button class="x" title="удалить">×</button>
+    `;
+    el.querySelector('.x').onclick = ev => { ev.stopPropagation(); deletePolygon(id); };
+    list.appendChild(el);
+  });
+}
+
+async function refreshStats() {
+  const r = await fetch('/stats');
+  const data = await r.json();
+  document.getElementById('stat-type').textContent = data.index.type || '—';
+  document.getElementById('stat-count').textContent = data.index.polygon_count ?? '—';
+  document.getElementById('stat-cells').textContent = data.index.occupied_cells ?? '—';
+  document.getElementById('stat-size').textContent = data.index.cell_size ?? '—';
+}
+
+async function queryAt(latlng) {
+  document.getElementById('pip-lng').value = latlng.lng.toFixed(6);
+  document.getElementById('pip-lat').value = latlng.lat.toFixed(6);
+  await runPip();
+}
+
+async function runPip() {
+  const lng = parseFloat(document.getElementById('pip-lng').value);
+  const lat = parseFloat(document.getElementById('pip-lat').value);
+  if (isNaN(lng) || isNaN(lat)) {
+    document.getElementById('query-status').textContent = 'Введите валидные координаты';
+    return;
+  }
+  const body = {
+    point: [lng, lat],
+    algorithm: document.getElementById('pip-algo').value,
+    include_boundary: document.getElementById('pip-boundary').checked,
+  };
+  const r = await fetch('/query/point-in-polygon', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+
+  if (queryMarker) map.removeLayer(queryMarker);
+  if (queryHighlight) map.removeLayer(queryHighlight);
+
+  const hit = (data.matching_count || 0) > 0;
+  queryMarker = L.circleMarker([lat, lng], {
+    radius: 7,
+    color: hit ? '#10b981' : '#ef4444',
+    fillColor: hit ? '#10b981' : '#ef4444',
+    fillOpacity: 1, weight: 2,
+  }).addTo(map);
+
+  if (hit && data.matching_polygons.length) {
+    queryHighlight = L.geoJSON(
+      { type: 'FeatureCollection', features: data.matching_polygons.map(p => ({ type: 'Feature', geometry: p.geometry })) },
+      {
+        style: { color: '#10b981', weight: 3, fillOpacity: 0.05 },
+        coordsToLatLng: c => L.latLng(c[1], c[0]),
+        interactive: false,
+      }
+    ).addTo(map);
+  }
+
+  const result = document.getElementById('pip-result');
+  const verdict = document.getElementById('pip-verdict');
+  const matched = document.getElementById('pip-matched');
+  result.className = `result-card show ${hit ? 'hit' : 'miss'}`;
+  verdict.textContent = hit
+    ? `Попадание в ${data.matching_count} полигон(ов)`
+    : 'Точка не попадает ни в один полигон';
+  matched.textContent = hit
+    ? data.matching_polygons.map(p => `• ${p.name}  ${p.id.slice(0, 8)}`).join('\n')
+    : '';
+
+  document.getElementById('pip-json').textContent = JSON.stringify(data, null, 2);
+  document.getElementById('query-status').textContent =
+    `Проверено: ${lng.toFixed(5)}, ${lat.toFixed(5)} · ${body.algorithm}`;
+}
+
+function toggleJson(id, btn) {
+  const el = document.getElementById(id);
+  const open = el.classList.toggle('show');
+  btn.textContent = open ? 'скрыть ответ' : 'показать ответ сервера';
+}
+
+reloadPolygons();
 </script>
 </body>
 </html>

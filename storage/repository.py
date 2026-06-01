@@ -1,27 +1,35 @@
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
-from geometry.types import Point, Polygon
-from geometry.algorithms import polygon_contains, PointLocation
+from geometry.types import Point, Polygon, MultiPolygon, Geometry
+from geometry.algorithms import geometry_contains, PointLocation
 from geometry.index import GridIndex
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 @dataclass
 class PolygonRecord:
-    """Хранимая запись: полигон + метаданные."""
-    id:         str
-    name:       str
-    polygon:    Polygon
-    properties: dict         = field(default_factory=dict)
-    created_at: datetime     = field(default_factory=datetime.utcnow)
-    updated_at: datetime     = field(default_factory=datetime.utcnow)
+    id: str
+    name: str
+    geometry: Geometry
+    properties: dict = field(default_factory=dict)
+    created_at: datetime = field(default_factory=_now)
+    updated_at: datetime = field(default_factory=_now)
+
+    @property
+    def polygon(self) -> Geometry:
+        # Сохраняем обратную совместимость со старым именем поля.
+        return self.geometry
 
     def to_dict(self) -> dict:
         return {
-            "id":         self.id,
-            "name":       self.name,
-            "geometry":   self.polygon.to_geojson(),
+            "id": self.id,
+            "name": self.name,
+            "geometry": self.geometry.to_geojson(),
             "properties": self.properties,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
@@ -34,17 +42,15 @@ class PolygonRepository:
         self._store: dict[str, PolygonRecord] = {}
         self._index = GridIndex(cell_size=index_cell_size)
 
-    # CRUD
-
-    def create(self, name: str, polygon: Polygon, properties: dict | None = None) -> PolygonRecord:
+    def create(self, name: str, geometry: Geometry, properties: dict | None = None) -> PolygonRecord:
         record = PolygonRecord(
             id=str(uuid.uuid4()),
             name=name,
-            polygon=polygon,
+            geometry=geometry,
             properties=properties or {},
         )
         self._store[record.id] = record
-        self._index.add(record.id, polygon)
+        self._index.add(record.id, geometry)
         return record
 
     def get(self, polygon_id: str) -> PolygonRecord | None:
@@ -56,22 +62,23 @@ class PolygonRepository:
     def update(
         self,
         polygon_id: str,
-        name:       str | None     = None,
-        polygon:    Polygon | None = None,
-        properties: dict | None    = None,
+        name: str | None = None,
+        geometry: Geometry | None = None,
+        properties: dict | None = None,
     ) -> PolygonRecord | None:
-        """Частичное обновление — меняются только переданные поля."""
         record = self._store.get(polygon_id)
         if record is None:
             return None
 
-        if name       is not None: record.name       = name
-        if properties is not None: record.properties = properties
-        if polygon    is not None:
-            record.polygon = polygon
-            self._index.update(polygon_id, polygon)
+        if name is not None:
+            record.name = name
+        if properties is not None:
+            record.properties = properties
+        if geometry is not None:
+            record.geometry = geometry
+            self._index.update(polygon_id, geometry)
 
-        record.updated_at = datetime.utcnow()
+        record.updated_at = _now()
         return record
 
     def delete(self, polygon_id: str) -> bool:
@@ -81,12 +88,10 @@ class PolygonRepository:
         self._index.remove(polygon_id)
         return True
 
-    # Пространственный поиск
-
     def find_containing_point(
         self,
-        point:            Point,
-        algorithm:        str  = "ray_casting",
+        point: Point,
+        algorithm: str = "ray_casting",
         include_boundary: bool = True,
     ) -> list[PolygonRecord]:
         result = []
@@ -94,12 +99,10 @@ class PolygonRepository:
             record = self._store.get(pid)
             if record is None:
                 continue
-            loc = polygon_contains(point, record.polygon, algorithm)
+            loc = geometry_contains(point, record.geometry, algorithm)
             if loc == PointLocation.INSIDE or (loc == PointLocation.ON_BOUNDARY and include_boundary):
                 result.append(record)
         return result
-
-    # Утилиты
 
     def count(self) -> int:
         return len(self._store)

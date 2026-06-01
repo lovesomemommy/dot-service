@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Union
 
 
 @dataclass(frozen=True)
@@ -33,13 +34,11 @@ class Ring:
         return cls(points=pts)
 
     def to_coords(self) -> list[list[float]]:
-        """Сериализация в GeoJSON (с явным замыканием первая == последняя)."""
         coords = [p.to_list() for p in self.points]
         coords.append(coords[0])
         return coords
 
     def bounding_box(self) -> tuple[float, float, float, float]:
-        """Вернуть (min_x, min_y, max_x, max_y)."""
         xs = [p.x for p in self.points]
         ys = [p.y for p in self.points]
         return (min(xs), min(ys), max(xs), max(ys))
@@ -56,7 +55,7 @@ class Polygon:
     @classmethod
     def from_geojson(cls, geojson: dict) -> "Polygon":
         if geojson.get("type") == "Feature":
-            geojson = geojson["geometry"]
+            geojson = geojson.get("geometry") or {}
 
         if geojson.get("type") != "Polygon":
             raise ValueError(
@@ -86,3 +85,71 @@ class Polygon:
 
     def __repr__(self) -> str:
         return f"Polygon(points={len(self.exterior)}, holes={len(self.holes)})"
+
+
+@dataclass
+class MultiPolygon:
+    polygons: list[Polygon] = field(default_factory=list)
+
+    @classmethod
+    def from_geojson(cls, geojson: dict) -> "MultiPolygon":
+        if geojson.get("type") == "Feature":
+            geojson = geojson.get("geometry") or {}
+
+        if geojson.get("type") != "MultiPolygon":
+            raise ValueError(
+                f"Ожидается тип 'MultiPolygon', получен '{geojson.get('type')}'"
+            )
+
+        coords = geojson.get("coordinates")
+        if not coords:
+            raise ValueError("Пустые координаты мультиполигона")
+
+        polygons = []
+        for poly_coords in coords:
+            polygons.append(Polygon(
+                exterior=Ring.from_coords(poly_coords[0]),
+                holes=[Ring.from_coords(c) for c in poly_coords[1:]],
+            ))
+        return cls(polygons=polygons)
+
+    def to_geojson(self) -> dict:
+        return {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [p.exterior.to_coords()] + [h.to_coords() for h in p.holes]
+                for p in self.polygons
+            ],
+        }
+
+    def bounding_box(self) -> tuple[float, float, float, float]:
+        if not self.polygons:
+            raise ValueError("Пустой мультиполигон")
+        boxes = [p.bounding_box() for p in self.polygons]
+        return (
+            min(b[0] for b in boxes),
+            min(b[1] for b in boxes),
+            max(b[2] for b in boxes),
+            max(b[3] for b in boxes),
+        )
+
+    def __len__(self) -> int:
+        return len(self.polygons)
+
+    def __repr__(self) -> str:
+        return f"MultiPolygon(parts={len(self.polygons)})"
+
+
+Geometry = Union[Polygon, MultiPolygon]
+
+
+def geometry_from_geojson(geojson: dict) -> Geometry:
+    """Распознать тип геометрии и вернуть Polygon или MultiPolygon."""
+    if geojson.get("type") == "Feature":
+        geojson = geojson.get("geometry") or {}
+    t = geojson.get("type")
+    if t == "Polygon":
+        return Polygon.from_geojson(geojson)
+    if t == "MultiPolygon":
+        return MultiPolygon.from_geojson(geojson)
+    raise ValueError(f"Поддерживаются только 'Polygon' и 'MultiPolygon', получен '{t}'")

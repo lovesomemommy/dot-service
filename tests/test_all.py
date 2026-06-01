@@ -8,12 +8,13 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from geometry.types import Point, Ring, Polygon
+from geometry.types import Point, Ring, Polygon, MultiPolygon, geometry_from_geojson
 from geometry.algorithms import (
-    ray_casting, winding_number, polygon_contains,
-    PointLocation, bbox_contains_point
+    ray_casting, winding_number, polygon_contains, multipolygon_contains,
+    geometry_contains, PointLocation, bbox_contains_point
 )
 from geometry.index import BoundingBoxIndex, GridIndex
+from geometry.wkt import parse_wkt, to_wkt
 from storage.repository import PolygonRepository
 
 
@@ -308,6 +309,114 @@ class TestGridIndex(unittest.TestCase):
         self.assertEqual(stats["type"], "GridIndex")
         self.assertEqual(stats["polygon_count"], 1)
 
+    def test_remove_clears_grid_cells(self):
+        """После remove полигон не должен оставаться в ячейках сетки."""
+        self.index.remove("p1")
+        self.assertEqual(self.index.candidates(Point(2, 2)), [])
+        self.assertEqual(self.index.stats()["occupied_cells"], 0)
+
+    def test_update_relocates_polygon(self):
+        """После update полигон должен находиться в новом месте, но не в старом."""
+        new_poly = make_square(100, 100, 110, 110)
+        self.index.update("p1", new_poly)
+        self.assertEqual(self.index.candidates(Point(2, 2)), [])
+        self.assertIn("p1", self.index.candidates(Point(105, 105)))
+
+
+class TestMultiPolygon(unittest.TestCase):
+
+    def setUp(self):
+        self.mp = MultiPolygon(polygons=[
+            make_square(0, 0, 4, 4),
+            make_square(10, 10, 14, 14),
+        ])
+
+    def test_geojson_roundtrip(self):
+        gj = self.mp.to_geojson()
+        self.assertEqual(gj["type"], "MultiPolygon")
+        restored = MultiPolygon.from_geojson(gj)
+        self.assertEqual(len(restored), 2)
+
+    def test_bounding_box_covers_all_parts(self):
+        bbox = self.mp.bounding_box()
+        self.assertEqual(bbox, (0, 0, 14, 14))
+
+    def test_point_in_first_part(self):
+        result = multipolygon_contains(Point(2, 2), self.mp)
+        self.assertEqual(result, PointLocation.INSIDE)
+
+    def test_point_in_second_part(self):
+        result = multipolygon_contains(Point(12, 12), self.mp)
+        self.assertEqual(result, PointLocation.INSIDE)
+
+    def test_point_between_parts(self):
+        result = multipolygon_contains(Point(7, 7), self.mp)
+        self.assertEqual(result, PointLocation.OUTSIDE)
+
+    def test_geometry_dispatch(self):
+        self.assertEqual(geometry_contains(Point(2, 2), self.mp), PointLocation.INSIDE)
+        self.assertEqual(geometry_contains(Point(50, 50), self.mp), PointLocation.OUTSIDE)
+
+    def test_geometry_from_geojson_dispatch(self):
+        poly_gj = {"type": "Polygon", "coordinates": [[[0,0],[1,0],[1,1],[0,1],[0,0]]]}
+        self.assertIsInstance(geometry_from_geojson(poly_gj), Polygon)
+        self.assertIsInstance(geometry_from_geojson(self.mp.to_geojson()), MultiPolygon)
+
+    def test_unsupported_type_rejected(self):
+        with self.assertRaises(ValueError):
+            geometry_from_geojson({"type": "Point", "coordinates": [0, 0]})
+
+
+class TestWKT(unittest.TestCase):
+
+    def test_parse_simple_polygon(self):
+        geom = parse_wkt("POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))")
+        self.assertIsInstance(geom, Polygon)
+        self.assertEqual(len(geom.exterior), 4)
+        self.assertFalse(geom.has_holes())
+
+    def test_parse_polygon_with_hole(self):
+        wkt = "POLYGON ((0 0, 20 0, 20 20, 0 20, 0 0), (5 5, 15 5, 15 15, 5 15, 5 5))"
+        geom = parse_wkt(wkt)
+        self.assertTrue(geom.has_holes())
+        self.assertEqual(len(geom.holes), 1)
+
+    def test_parse_multipolygon(self):
+        wkt = "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)), ((10 10, 11 10, 11 11, 10 11, 10 10)))"
+        geom = parse_wkt(wkt)
+        self.assertIsInstance(geom, MultiPolygon)
+        self.assertEqual(len(geom), 2)
+
+    def test_parse_floats_and_negatives(self):
+        geom = parse_wkt("POLYGON ((-1.5 0, 2.5 0, 1.0 3.5, -1.5 0))")
+        self.assertIsInstance(geom, Polygon)
+        self.assertEqual(geom.exterior.points[0], Point(-1.5, 0))
+
+    def test_invalid_wkt_raises(self):
+        with self.assertRaises(ValueError):
+            parse_wkt("CIRCLE (0 0 10)")
+
+    def test_unbalanced_parens_raises(self):
+        with self.assertRaises(ValueError):
+            parse_wkt("POLYGON ((0 0, 1 0, 1 1, 0 0")
+
+    def test_polygon_to_wkt_roundtrip(self):
+        original = make_square(0, 0, 5, 5)
+        wkt = to_wkt(original)
+        restored = parse_wkt(wkt)
+        self.assertEqual(len(original.exterior), len(restored.exterior))
+        for o, r in zip(original.exterior.points, restored.exterior.points):
+            self.assertAlmostEqual(o.x, r.x)
+            self.assertAlmostEqual(o.y, r.y)
+
+    def test_multipolygon_to_wkt_roundtrip(self):
+        original = MultiPolygon(polygons=[
+            make_square(0, 0, 1, 1),
+            make_square(10, 10, 11, 11),
+        ])
+        restored = parse_wkt(to_wkt(original))
+        self.assertEqual(len(original), len(restored))
+
 
 #  Тесты репозитория
 
@@ -516,6 +625,34 @@ class TestAPI(unittest.TestCase):
         status, body = self._call("POST", "/query/point-in-polygon", {})
         self.assertEqual(status, 400)
 
+    def test_create_polygon_from_wkt(self):
+        status, body = self._call("POST", "/polygons", {
+            "name": "wkt-poly",
+            "wkt": "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))",
+        })
+        self.assertEqual(status, 201)
+        self.assertIn("wkt", body)
+        self.assertIn("geometry", body)
+        self.assertEqual(body["geometry"]["type"], "Polygon")
+
+    def test_create_multipolygon(self):
+        status, body = self._call("POST", "/polygons", {
+            "name": "mp",
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [
+                    [[[0,0],[1,0],[1,1],[0,1],[0,0]]],
+                    [[[5,5],[6,5],[6,6],[5,6],[5,5]]],
+                ],
+            },
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(body["geometry"]["type"], "MultiPolygon")
+
+    def test_create_without_geometry_or_wkt(self):
+        status, body = self._call("POST", "/polygons", {"name": "x"})
+        self.assertEqual(status, 400)
+
 
 if __name__ == "__main__":
     # Запуск с подробным выводом
@@ -527,6 +664,7 @@ if __name__ == "__main__":
         TestRayCasting, TestWindingNumber, TestPolygonContains,
         TestBboxContainsPoint,
         TestBoundingBoxIndex, TestGridIndex,
+        TestMultiPolygon, TestWKT,
         TestRepository,
         TestAPI,
     ]
